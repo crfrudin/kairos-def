@@ -1,0 +1,8 @@
+Começo do dia
+.\scripts\git_day_start.ps1
+
+Início de fase
+.\scripts\git_phase_start.ps1 1-profile
+
+Fim de fase
+.\scripts\git_phase_finish.ps1 1-profile "feat: conclude phase 1 profile"
