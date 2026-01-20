@@ -3,7 +3,8 @@ import { ReviewAllocator } from '@/features/daily-plan/application/services/Revi
 import { ExtrasAllocator } from '@/features/daily-plan/application/services/ExtrasAllocator';
 import { TheoryAllocator } from '@/features/daily-plan/application/services/TheoryAllocator';
 import { DailyPlanComposer } from '@/features/daily-plan/application/services/DailyPlanComposer';
-
+import type { ICalendarProjectionReadPort } from '@/features/daily-plan/application/ports/ICalendarProjectionReadPort';
+import { GetCalendarProjectionUseCase } from '@/features/daily-plan/application/use-cases/GetCalendarProjection';
 import type { IPlanningContextPort } from '@/features/daily-plan/application/ports/IPlanningContextPort';
 
 import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
@@ -112,6 +113,18 @@ export interface CreateGetDailyPlanUseCaseDeps {
 
 export const createGetDailyPlanUseCase = (deps: CreateGetDailyPlanUseCaseDeps): GetDailyPlanUseCase => {
   return new GetDailyPlanUseCase({
+    readPort: deps.readPort,
+  });
+};
+
+export interface CreateGetCalendarProjectionUseCaseDeps {
+  readPort: ICalendarProjectionReadPort;
+}
+
+export const createGetCalendarProjectionUseCase = (
+  deps: CreateGetCalendarProjectionUseCaseDeps
+): GetCalendarProjectionUseCase => {
+  return new GetCalendarProjectionUseCase({
     readPort: deps.readPort,
   });
 };
