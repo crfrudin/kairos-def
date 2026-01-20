@@ -23,10 +23,17 @@ export const createDailyPlanComposer = (): DailyPlanComposer => {
 export interface CreateGenerateDailyPlanUseCaseDeps {
   contextPort: IPlanningContextPort;
   persistencePort: IDailyPlanPersistencePort;
+
+  /**
+   * Clock injetável:
+   * - NÃO afeta o plano (output), apenas auditoria.
+   */
   nowIso?: () => string;
 }
 
-export const createGenerateDailyPlanUseCase = (deps: CreateGenerateDailyPlanUseCaseDeps): GenerateDailyPlanUseCase => {
+export const createGenerateDailyPlanUseCase = (
+  deps: CreateGenerateDailyPlanUseCaseDeps
+): GenerateDailyPlanUseCase => {
   const composer = createDailyPlanComposer();
 
   return new GenerateDailyPlanUseCase({
@@ -39,7 +46,17 @@ export const createGenerateDailyPlanUseCase = (deps: CreateGenerateDailyPlanUseC
 
 export interface CreateGenerateCalendarProjectionUseCaseDeps {
   contextPort: IPlanningContextPort;
-  projectionPersistencePort: ICalendarProjectionPersistencePort;
+
+  /**
+   * Observa o contrato do UC-02:
+   * GenerateCalendarProjectionDeps exige "persistencePort".
+   */
+  persistencePort: ICalendarProjectionPersistencePort;
+
+  /**
+   * Clock injetável:
+   * - NÃO afeta o conteúdo do plano (output), apenas auditoria.
+   */
   nowIso?: () => string;
 }
 
@@ -50,7 +67,7 @@ export const createGenerateCalendarProjectionUseCase = (
 
   return new GenerateCalendarProjectionUseCase({
     contextPort: deps.contextPort,
-    projectionPersistencePort: deps.projectionPersistencePort,
+    persistencePort: deps.persistencePort,
     composer,
     nowIso: deps.nowIso ?? (() => new Date().toISOString()),
   });

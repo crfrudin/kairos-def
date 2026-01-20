@@ -2,40 +2,54 @@ import type { DailyPlanDTO } from '../dtos/DailyPlanDTO';
 import type { IPlanningContextPort } from '../ports/IPlanningContextPort';
 import type { ICalendarProjectionPersistencePort } from '../ports/ICalendarProjectionPersistencePort';
 import { assertIsoDate } from '../services/DateUtil';
+import { DailyPlanComposer } from '../services/DailyPlanComposer';
 import { stableStringify, sha256Hex } from '../services/HashUtil';
 import { InvalidInputError } from '../errors/InvalidInputError';
 import { PlanningBlockedError } from '../errors/PlanningBlockedError';
-import { DailyPlanComposer } from '../services/DailyPlanComposer';
 
 export interface GenerateCalendarProjectionInput {
   userId: string;
-  rangeStart: string; // YYYY-MM-DD (inclusive)
+  rangeStart: string; // YYYY-MM-DD
   rangeEnd: string;   // YYYY-MM-DD (inclusive)
 }
 
 export interface GenerateCalendarProjectionOutput {
   rangeStart: string;
-  rangeEnd: string;
+  rangeEnd: string; // inclusive
   days: DailyPlanDTO[];
 }
 
 export interface GenerateCalendarProjectionDeps {
   contextPort: IPlanningContextPort;
-  projectionPersistencePort: ICalendarProjectionPersistencePort;
+  persistencePort: ICalendarProjectionPersistencePort;
   composer: DailyPlanComposer;
 
   /**
-   * Clock injetável (não afeta output, só auditoria).
+   * Clock injetável:
+   * - NÃO afeta o conteúdo do plano (output), apenas auditoria.
    */
   nowIso: () => string;
 }
 
-/**
- * UC-02: Projeção regenerável por intervalo.
- * - NÃO escreve executed_days.
- * - Pode gravar cache regenerável em calendar_projections.
- * - Regra defensiva: máx 90 dias (DDL já impõe).
- */
+function toUtcMidnight(dateIso: string): Date {
+  // YYYY-MM-DD => Date em UTC midnight (determinístico, sem timezone local)
+  const [y, m, d] = dateIso.split('-').map((x) => Number(x));
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+}
+
+function addDaysUtc(base: Date, days: number): Date {
+  const d = new Date(base.getTime());
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function toIsoDateUtc(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export class GenerateCalendarProjectionUseCase {
   constructor(private readonly deps: GenerateCalendarProjectionDeps) {}
 
@@ -47,49 +61,52 @@ export class GenerateCalendarProjectionUseCase {
     assertIsoDate(input.rangeStart);
     assertIsoDate(input.rangeEnd);
 
-    const start = new Date(`${input.rangeStart}T00:00:00.000Z`);
-    const end = new Date(`${input.rangeEnd}T00:00:00.000Z`);
+    const start = toUtcMidnight(input.rangeStart);
+    const end = toUtcMidnight(input.rangeEnd);
 
-    if (Number.isNaN(start.getTime())) {
-      throw new InvalidInputError({ message: 'rangeStart inválido.', field: 'rangeStart' });
-    }
-    if (Number.isNaN(end.getTime())) {
-      throw new InvalidInputError({ message: 'rangeEnd inválido.', field: 'rangeEnd' });
-    }
     if (start.getTime() > end.getTime()) {
       throw new InvalidInputError({ message: 'rangeStart deve ser <= rangeEnd.', field: 'rangeStart' });
     }
 
-    // Inclusivo
     const diffDays = Math.floor((end.getTime() - start.getTime()) / 86400000);
-    if (diffDays > 90) {
-      throw new InvalidInputError({ message: 'Intervalo máximo é 90 dias.', field: 'rangeEnd' });
+    const totalDaysInclusive = diffDays + 1;
+
+    // DDL tem CHECK <= 90 dias (range_end - range_start <= 90).
+    // Como o modelo é inclusive, aqui impomos <= 91 dias no máximo se o DDL fosse estrito.
+    // Porém o DDL usa diferença de dates, então para estar sempre compatível:
+    // range_end - range_start <= 90  => inclusive totalDays <= 91.
+    if (totalDaysInclusive < 1 || totalDaysInclusive > 91) {
+      throw new InvalidInputError({
+        message: 'Intervalo inválido. Máximo permitido: 91 dias (inclusive), conforme CHECK do schema.',
+        field: 'rangeEnd',
+      });
     }
 
+    // Geração determinística: dia a dia, sem materializar daily_plans (apenas projeção).
     const days: DailyPlanDTO[] = [];
 
-    for (let i = 0; i <= diffDays; i++) {
-      const d = new Date(start.getTime() + i * 86400000);
-      const iso = d.toISOString().slice(0, 10);
+    for (let i = 0; i < totalDaysInclusive; i++) {
+      const date = toIsoDateUtc(addDaysUtc(start, i));
 
       const ctx = await this.deps.contextPort.getPlanningContext({
         userId: input.userId,
-        date: iso,
+        date,
       });
 
+      // consistência mínima
       if (ctx.userId !== input.userId) {
         throw new InvalidInputError({ message: 'Contexto inconsistente (userId).', field: 'userId' });
       }
-      if (ctx.date !== iso) {
+      if (ctx.date !== date) {
         throw new InvalidInputError({ message: 'Contexto inconsistente (date).', field: 'rangeStart' });
       }
 
-      // Bloqueios (mesma filosofia UC-01)
+      // BLOQUEIOS NORMATIVOS (fail-fast)
       if (ctx.hasExecution) {
-        throw new PlanningBlockedError({ date: iso, reason: 'day_already_executed' });
+        throw new PlanningBlockedError({ date, reason: 'day_already_executed' });
       }
       if (ctx.profile.studyMode === 'CICLO') {
-        throw new PlanningBlockedError({ date: iso, reason: 'cycle_cursor_storage_not_defined' });
+        throw new PlanningBlockedError({ date, reason: 'cycle_cursor_storage_not_defined' });
       }
 
       const { plan } = this.deps.composer.compose(ctx);
@@ -101,28 +118,32 @@ export class GenerateCalendarProjectionUseCase {
         userId: input.userId,
         rangeStart: input.rangeStart,
         rangeEnd: input.rangeEnd,
-        daysCount: days.length,
+        // NOTA: o conteúdo exato depende do provider por dia; registramos o array final de planos (outputHash) e range aqui.
       })
     );
 
     const outputHash = sha256Hex(stableStringify(days));
 
-    const generationLogId = await this.deps.projectionPersistencePort.createProjectionGenerationLog({
+    // 1) log auditável do intervalo
+    const log = await this.deps.persistencePort.appendProjectionGenerationLog({
       userId: input.userId,
       rangeStart: input.rangeStart,
       rangeEnd: input.rangeEnd,
-      reason: 'system',
-      normativeContext: { inputHash, outputHash },
-      occurredAtIso: this.deps.nowIso(),
-      notes: null,
+      generatedAtIso: this.deps.nowIso(),
+      inputHash,
+      outputHash,
     });
 
-    await this.deps.projectionPersistencePort.upsertCalendarProjection({
+    // 2) persistência da projeção regenerável
+    await this.deps.persistencePort.upsertCalendarProjection({
       userId: input.userId,
       rangeStart: input.rangeStart,
       rangeEnd: input.rangeEnd,
-      generationLogId,
-      normativeContext: { inputHash, outputHash },
+      generationLogId: log.generationLogId,
+      normativeContext: {
+        inputHash,
+        outputHash,
+      },
       projectionPayload: {
         rangeStart: input.rangeStart,
         rangeEnd: input.rangeEnd,

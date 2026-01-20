@@ -4,30 +4,56 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/features/auth/infra/ssr/createSupabaseServerClient';
 
 import type {
+  AppendProjectionGenerationLogEntry,
+  CalendarProjectionPayload,
   ICalendarProjectionPersistencePort,
-  CreateProjectionGenerationLogInput,
-  UpsertCalendarProjectionInput,
 } from '@/features/daily-plan/application/ports/ICalendarProjectionPersistencePort';
+
+type DbPlanGenerationLogInsert = {
+  user_id: string;
+  range_start: string; // date
+  range_end: string;   // date
+  reason: 'profile_changed' | 'subjects_changed' | 'manual_regenerate' | 'system';
+  normative_context: Record<string, unknown>;
+  occurred_at: string; // timestamptz ISO
+  notes: string | null;
+};
+
+type DbCalendarProjectionsInsert = {
+  user_id: string;
+  range_start: string; // date
+  range_end: string;   // date
+  generation_log_id: string;
+  normative_context: Record<string, unknown>;
+  projection_payload: Record<string, unknown>;
+};
 
 export class SupabaseCalendarProjectionPersistencePortSSR implements ICalendarProjectionPersistencePort {
   private async getClient(): Promise<SupabaseClient> {
     return createSupabaseServerClient() as unknown as SupabaseClient;
   }
 
-  public async createProjectionGenerationLog(input: CreateProjectionGenerationLogInput): Promise<string> {
+  public async appendProjectionGenerationLog(
+    entry: AppendProjectionGenerationLogEntry
+  ): Promise<{ generationLogId: string }> {
     const client = await this.getClient();
+
+    const row: DbPlanGenerationLogInsert = {
+      user_id: entry.userId,
+      range_start: entry.rangeStart,
+      range_end: entry.rangeEnd,
+      reason: 'system',
+      normative_context: {
+        inputHash: entry.inputHash,
+        outputHash: entry.outputHash,
+      },
+      occurred_at: entry.generatedAtIso,
+      notes: null,
+    };
 
     const ins = await client
       .from('plan_generation_log')
-      .insert({
-        user_id: input.userId,
-        range_start: input.rangeStart,
-        range_end: input.rangeEnd,
-        reason: input.reason,
-        normative_context: input.normativeContext,
-        occurred_at: input.occurredAtIso,
-        notes: input.notes ?? null,
-      })
+      .insert(row)
       .select('id')
       .single();
 
@@ -35,21 +61,37 @@ export class SupabaseCalendarProjectionPersistencePortSSR implements ICalendarPr
       throw new Error(`DB_INSERT_PLAN_GENERATION_LOG_FAILED: ${ins.error.message}`);
     }
 
-    return String((ins.data as { id: string }).id);
+    const id = String((ins.data as { id?: string } | null)?.id ?? '');
+    if (!id) {
+      throw new Error('DB_INSERT_PLAN_GENERATION_LOG_FAILED: missing id.');
+    }
+
+    return { generationLogId: id };
   }
 
-  public async upsertCalendarProjection(input: UpsertCalendarProjectionInput): Promise<void> {
+  public async upsertCalendarProjection(params: {
+    userId: string;
+    rangeStart: string;
+    rangeEnd: string;
+    generationLogId: string;
+    normativeContext: Record<string, unknown>;
+    projectionPayload: CalendarProjectionPayload;
+  }): Promise<void> {
     const client = await this.getClient();
 
-    // Projeção é regenerável; gravamos uma linha por geração (mais recente vence por generated_at).
-    const ins = await client.from('calendar_projections').insert({
-      user_id: input.userId,
-      range_start: input.rangeStart,
-      range_end: input.rangeEnd,
-      generation_log_id: input.generationLogId,
-      normative_context: input.normativeContext,
-      projection_payload: input.projectionPayload,
-    });
+    const row: DbCalendarProjectionsInsert = {
+      user_id: params.userId,
+      range_start: params.rangeStart,
+      range_end: params.rangeEnd,
+      generation_log_id: params.generationLogId,
+      normative_context: params.normativeContext,
+      projection_payload: params.projectionPayload as unknown as Record<string, unknown>,
+    };
+
+    // Não há UNIQUE no DDL para (user_id, range_start, range_end).
+    // Logo, a regra aqui é "append" (histórico de projeções regeneráveis).
+    // Isso é compatível com "regenerável" sem destruir rastreabilidade.
+    const ins = await client.from('calendar_projections').insert(row);
 
     if (ins.error) {
       throw new Error(`DB_INSERT_CALENDAR_PROJECTIONS_FAILED: ${ins.error.message}`);

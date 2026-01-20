@@ -1,36 +1,42 @@
 import type { DailyPlanDTO } from '../dtos/DailyPlanDTO';
 
-export type ProjectionReason = 'profile_changed' | 'subjects_changed' | 'manual_regenerate' | 'system';
+export type CalendarProjectionPayload = Readonly<{
+  rangeStart: string; // YYYY-MM-DD
+  rangeEnd: string;   // YYYY-MM-DD (inclusive)
+  days: DailyPlanDTO[];
+}>;
 
-export interface CreateProjectionGenerationLogInput {
+export interface AppendProjectionGenerationLogEntry {
   userId: string;
   rangeStart: string; // YYYY-MM-DD
   rangeEnd: string;   // YYYY-MM-DD (inclusive)
-  reason: ProjectionReason;
-
-  normativeContext: Record<string, unknown>;
-  occurredAtIso: string; // ISO timestamptz
-  notes?: string | null;
+  generatedAtIso: string; // ISO
+  inputHash: string;
+  outputHash: string;
 }
 
-export interface UpsertCalendarProjectionInput {
-  userId: string;
-  rangeStart: string; // YYYY-MM-DD
-  rangeEnd: string;   // YYYY-MM-DD (inclusive)
+/**
+ * Persistência da projeção regenerável (calendar_projections) + trilho auditável (plan_generation_log).
+ * Observa DDL oficial da Fase 3 / Etapa 3.
+ */
+export interface ICalendarProjectionPersistencePort {
+  appendProjectionGenerationLog(entry: AppendProjectionGenerationLogEntry): Promise<{ generationLogId: string }>;
 
-  generationLogId: string;
-
-  normativeContext: Record<string, unknown>;
-
-  // Payload regenerável (sem valor histórico)
-  projectionPayload: {
+  upsertCalendarProjection(params: {
+    userId: string;
     rangeStart: string;
     rangeEnd: string;
-    days: DailyPlanDTO[];
-  };
-}
+    generationLogId: string;
 
-export interface ICalendarProjectionPersistencePort {
-  createProjectionGenerationLog(input: CreateProjectionGenerationLogInput): Promise<string>;
-  upsertCalendarProjection(input: UpsertCalendarProjectionInput): Promise<void>;
+    /**
+     * Contexto normativo/snapshot (estrutura auditável).
+     * Sem heurística; apenas rastreabilidade.
+     */
+    normativeContext: Record<string, unknown>;
+
+    /**
+     * Payload regenerável (estrutura).
+     */
+    projectionPayload: CalendarProjectionPayload;
+  }): Promise<void>;
 }
