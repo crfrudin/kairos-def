@@ -1,8 +1,10 @@
 # Auth / Infra
 
-Implementações concretas (ex.: SupabaseAuthRepository) serão adicionadas em etapas futuras.
+Implementações concretas (IO/SDKs) da feature Auth.
 
-Regras:
-- IO e SDKs (Supabase, etc.) ficam aqui.
-- Nada daqui pode ser importado diretamente pela UI.
-- Application acessa infra somente via composition root + ports.
+Nesta etapa (ETAPA A - CORE):
+- Implementado: SupabaseAuthRepository (encapsula Supabase Auth)
+- Proibido: importar infra diretamente pela UI.
+- Acesso deve ocorrer via:
+  - Ports (IAuthRepository) + Use-cases
+  - Composition root (src/core/composition/auth.composition.ts)

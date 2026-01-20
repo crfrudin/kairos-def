@@ -1,19 +1,59 @@
-import type { IAuthRepository } from '@/features/auth';
+import type {
+  IAuthRepository,
+  LoginUseCase,
+  SignUpUseCase,
+  ConfirmEmailUseCase,
+  RequestPasswordResetUseCase,
+  ResetPasswordUseCase,
+} from '@/features/auth';
+
+import {
+  LoginUseCase as LoginUC,
+  SignUpUseCase as SignUpUC,
+  ConfirmEmailUseCase as ConfirmEmailUC,
+  RequestPasswordResetUseCase as RequestPasswordResetUC,
+  ResetPasswordUseCase as ResetPasswordUC,
+} from '@/features/auth';
+
+import { SupabaseAuthRepository } from '@/features/auth/infra/SupabaseAuthRepository';
 
 /**
- * Composition Root (Auth)
- * Nesta etapa: apenas contrato de composição (sem infra concreta).
+ * Composition Root (Auth) — ETAPA A (CORE)
+ *
+ * Regras:
+ * - Wiring determinístico (sem lógica de regra de negócio aqui).
+ * - Infra concreta (SupabaseAuthRepository) instanciada aqui.
+ * - Use-cases recebem dependências via constructor.
  */
 export interface AuthComposition {
   authRepository: IAuthRepository;
+
+  signUpUseCase: SignUpUseCase;
+  loginUseCase: LoginUseCase;
+  confirmEmailUseCase: ConfirmEmailUseCase;
+  requestPasswordResetUseCase: RequestPasswordResetUseCase;
+  resetPasswordUseCase: ResetPasswordUseCase;
 }
 
-/**
- * Cria a composição da feature Auth.
- * Nenhuma lógica aqui — apenas wiring determinístico.
- */
-export function createAuthComposition(params: AuthComposition): AuthComposition {
+function getRequiredEnv(name: string): string {
+  const v = String(process.env[name] ?? '').trim();
+  if (!v) throw new Error(`AUTH_ENV_MISSING: ${name} não definido.`);
+  return v;
+}
+
+export function createAuthComposition(): AuthComposition {
+  const supabaseUrl = getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const supabaseAnonKey = getRequiredEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+
+  const authRepository = new SupabaseAuthRepository({ supabaseUrl, supabaseAnonKey });
+
   return {
-    authRepository: params.authRepository,
+    authRepository,
+
+    signUpUseCase: new SignUpUC(authRepository),
+    loginUseCase: new LoginUC(authRepository),
+    confirmEmailUseCase: new ConfirmEmailUC(authRepository),
+    requestPasswordResetUseCase: new RequestPasswordResetUC(authRepository),
+    resetPasswordUseCase: new ResetPasswordUC(authRepository),
   };
 }
