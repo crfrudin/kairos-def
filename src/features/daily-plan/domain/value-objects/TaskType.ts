@@ -1,0 +1,7 @@
+export enum TaskType {
+  THEORY = 'THEORY',
+  QUESTIONS = 'QUESTIONS',
+  INFORMATIVES = 'INFORMATIVES',
+  LEI_SECA = 'LEI_SECA',
+  REVIEW = 'REVIEW',
+}
