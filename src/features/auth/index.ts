@@ -14,3 +14,7 @@ export { LoginUseCase } from './application/use-cases/LoginUseCase';
 export { ConfirmEmailUseCase } from './application/use-cases/ConfirmEmailUseCase';
 export { RequestPasswordResetUseCase } from './application/use-cases/RequestPasswordResetUseCase';
 export { ResetPasswordUseCase } from './application/use-cases/ResetPasswordUseCase';
+
+// SSR / Middleware (público para consumo do middleware global)
+export type { AuthClaims } from './infra/ssr/AuthClaims';
+export { getAuthClaimsFromNextRequest } from './infra/ssr/getAuthClaimsFromNextRequest';

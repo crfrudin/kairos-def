@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "test:e2e": "playwright test",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "test": "dotenv -e .env.local -- vitest",
+    "test:run": "dotenv -e .env.local -- vitest run",
     "test:env": "dotenv -e .env.local -- node -e \"console.log({ DATABASE_URL: !!process.env.DATABASE_URL, TEST_USER_A_ID: process.env.TEST_USER_A_ID, TEST_USER_B_ID: process.env.TEST_USER_B_ID })\""
   },
   "dependencies": {
@@ -31,6 +33,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.16.0",

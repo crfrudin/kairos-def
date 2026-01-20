@@ -1,0 +1,7 @@
+-- Placeholder (NO-OP)
+-- Motivo: o banco remoto possui a versão 20260119 registrada em supabase_migrations.schema_migrations,
+-- mas este repositório não tinha o arquivo correspondente. Este arquivo existe apenas para alinhar
+-- o histórico local ao remoto e permitir db push/pull.
+--
+-- Proibido: qualquer DDL aqui.
+-- Intencionalmente vazio.

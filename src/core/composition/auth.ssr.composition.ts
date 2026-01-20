@@ -1,3 +1,5 @@
+import 'server-only';
+
 import type {
   IAuthRepository,
   LoginUseCase,
@@ -15,13 +17,13 @@ import {
   ResetPasswordUseCase as ResetPasswordUC,
 } from '@/features/auth';
 
-import { SupabaseAuthRepository } from '@/features/auth/infra/SupabaseAuthRepository';
+import { SupabaseAuthRepositorySSR } from '@/features/auth/infra/ssr/SupabaseAuthRepositorySSR';
 
 import type { AuthAuditLogger } from '@/core/auth/audit/AuthAuditLogger';
 import { SupabaseAuthAuditLogger } from '@/core/auth/audit/AuthAuditLogger';
 import { AuthOrchestrator } from '@/core/auth/auth-orchestrator';
 
-export interface AuthComposition {
+export interface AuthSsrComposition {
   authRepository: IAuthRepository;
 
   signUpUseCase: SignUpUseCase;
@@ -34,17 +36,8 @@ export interface AuthComposition {
   orchestrator: AuthOrchestrator;
 }
 
-function getRequiredEnv(name: string): string {
-  const v = String(process.env[name] ?? '').trim();
-  if (!v) throw new Error(`AUTH_ENV_MISSING: ${name} não definido.`);
-  return v;
-}
-
-export function createAuthComposition(): AuthComposition {
-  const supabaseUrl = getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const supabaseAnonKey = getRequiredEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-
-  const authRepository = new SupabaseAuthRepository({ supabaseUrl, supabaseAnonKey });
+export function createAuthSsrComposition(): AuthSsrComposition {
+  const authRepository = new SupabaseAuthRepositorySSR();
 
   const signUpUseCase = new SignUpUC(authRepository);
   const loginUseCase = new LoginUC(authRepository);

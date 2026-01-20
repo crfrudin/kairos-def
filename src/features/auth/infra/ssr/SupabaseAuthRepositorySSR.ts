@@ -1,26 +1,11 @@
 import 'server-only';
 
-import { createClient } from '@supabase/supabase-js';
-import { createServerClient } from '@supabase/ssr';
-import type { IAuthRepository, Result, AuthErrorCode } from '../application/ports/IAuthRepository';
-import { AuthUser } from '../domain/entities/AuthUser';
-import type { Email } from '../domain/value-objects/Email';
-import type { Password } from '../domain/value-objects/Password';
-import { Email as EmailVO } from '../domain/value-objects/Email';
-
-type SupabaseAuthRepositoryConfig = {
-  supabaseUrl: string;
-  supabaseAnonKey: string;
-
-  /**
-   * Se presente, habilita SSR cookies (Next server actions / route handlers).
-   * Isso é o que permite que o middleware enxergue autenticação (via cookies).
-   */
-  cookies?: {
-    getAll: () => Array<{ name: string; value: string }>;
-    setAll: (cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => void;
-  };
-};
+import type { IAuthRepository, Result, AuthErrorCode } from '../../application/ports/IAuthRepository';
+import type { Email } from '../../domain/value-objects/Email';
+import type { Password } from '../../domain/value-objects/Password';
+import { AuthUser } from '../../domain/entities/AuthUser';
+import { Email as EmailVO } from '../../domain/value-objects/Email';
+import { createSupabaseServerClient } from './createSupabaseServerClient';
 
 type SupabaseUserLike = {
   id: string;
@@ -87,53 +72,23 @@ function mapAuthError(err: unknown): { code: AuthErrorCode; message: string } {
   return { code: 'UNEXPECTED', message: 'Erro inesperado.' };
 }
 
+function getSiteUrl(): string {
+  return String(process.env.NEXT_PUBLIC_SITE_URL ?? '').trim();
+}
+
 /**
- * Infra concreta do provedor (Supabase).
- *
- * Regras:
- * - UI não acessa supabase diretamente.
- * - Server actions usam cookies SSR via config.cookies (quando disponível).
- * - Fora desse contexto, operamos com client sem persistência (persistSession: false).
+ * Implementação SSR do IAuthRepository:
+ * - usa @supabase/ssr + cookies() para que middleware/SSR enxerguem a sessão.
+ * - tokens tratados apenas no backend (server actions / server components).
  */
-export class SupabaseAuthRepository implements IAuthRepository {
-  private readonly supabaseUrl: string;
-  private readonly supabaseAnonKey: string;
-  private readonly cookies?: SupabaseAuthRepositoryConfig['cookies'];
-
-  constructor(config: SupabaseAuthRepositoryConfig) {
-    this.supabaseUrl = String(config.supabaseUrl ?? '').trim();
-    this.supabaseAnonKey = String(config.supabaseAnonKey ?? '').trim();
-    this.cookies = config.cookies;
-
-    if (!this.supabaseUrl || !this.supabaseAnonKey) {
-      throw new Error('AUTH_CONFIG_INVALID: Supabase URL/ANON KEY não configurados.');
-    }
-  }
-
-  private createSupabaseClient() {
-    // 1) Se houver cookies adapter => SSR client (seta cookies corretamente)
-    if (this.cookies) {
-      return createServerClient(this.supabaseUrl, this.supabaseAnonKey, {
-        cookies: {
-          getAll: () => this.cookies!.getAll(),
-          setAll: (cookies) => this.cookies!.setAll(cookies as never),
-        },
-      });
-    }
-
-    // 2) Fallback: client sem persistência
-    return createClient(this.supabaseUrl, this.supabaseAnonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    });
+export class SupabaseAuthRepositorySSR implements IAuthRepository {
+  private async getSupabase() {
+    return await createSupabaseServerClient();
   }
 
   private async exchangeCodeForSession(code: string): Promise<Result<null, AuthErrorCode>> {
     try {
-      const supabase = this.createSupabaseClient();
+      const supabase = await this.getSupabase();
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
         const mapped = mapAuthError(error);
@@ -148,13 +103,10 @@ export class SupabaseAuthRepository implements IAuthRepository {
 
   async getCurrentUser(): Promise<Result<AuthUser | null, 'UNEXPECTED'>> {
     try {
-      const supabase = this.createSupabaseClient();
+      const supabase = await this.getSupabase();
       const { data, error } = await supabase.auth.getUser();
 
-      if (error) {
-        return { ok: false, error: { code: 'UNEXPECTED', message: 'Não foi possível obter usuário atual.' } };
-      }
-
+      if (error) return { ok: false, error: { code: 'UNEXPECTED', message: 'Não foi possível obter usuário atual.' } };
       if (!data?.user) return { ok: true, data: null };
 
       const mapped = toAuthUser(data.user as unknown as SupabaseUserLike);
@@ -166,12 +118,9 @@ export class SupabaseAuthRepository implements IAuthRepository {
     }
   }
 
-  async loginWithEmailAndPassword(params: {
-    email: Email;
-    password: Password;
-  }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
+  async loginWithEmailAndPassword(params: { email: Email; password: Password }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
     try {
-      const supabase = this.createSupabaseClient();
+      const supabase = await this.getSupabase();
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: params.email.getValue(),
@@ -183,9 +132,7 @@ export class SupabaseAuthRepository implements IAuthRepository {
         return { ok: false, error: { code: mapped.code, message: mapped.message } };
       }
 
-      if (!data?.user) {
-        return { ok: false, error: { code: 'UNEXPECTED', message: 'Falha ao autenticar.' } };
-      }
+      if (!data?.user) return { ok: false, error: { code: 'UNEXPECTED', message: 'Falha ao autenticar.' } };
 
       const mappedUser = toAuthUser(data.user as unknown as SupabaseUserLike);
       if (!mappedUser.ok) return { ok: false, error: { code: 'UNEXPECTED', message: mappedUser.error.message } };
@@ -197,16 +144,23 @@ export class SupabaseAuthRepository implements IAuthRepository {
     }
   }
 
-  async signUpWithEmailAndPassword(params: {
-    email: Email;
-    password: Password;
-  }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
+  async signUpWithEmailAndPassword(params: { email: Email; password: Password }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
     try {
-      const supabase = this.createSupabaseClient();
+      const supabase = await this.getSupabase();
+
+      const site = getSiteUrl();
+      const emailRedirectTo = site ? `${site}/confirmar-email` : undefined;
 
       const { data, error } = await supabase.auth.signUp({
         email: params.email.getValue(),
         password: params.password.getValueUnsafe(),
+        ...(emailRedirectTo
+          ? {
+              options: {
+                emailRedirectTo,
+              },
+            }
+          : {}),
       });
 
       if (error) {
@@ -214,9 +168,7 @@ export class SupabaseAuthRepository implements IAuthRepository {
         return { ok: false, error: { code: mapped.code, message: mapped.message } };
       }
 
-      if (!data?.user) {
-        return { ok: false, error: { code: 'UNEXPECTED', message: 'Falha ao cadastrar.' } };
-      }
+      if (!data?.user) return { ok: false, error: { code: 'UNEXPECTED', message: 'Falha ao cadastrar.' } };
 
       const mappedUser = toAuthUser(data.user as unknown as SupabaseUserLike);
       if (!mappedUser.ok) return { ok: false, error: { code: 'UNEXPECTED', message: mappedUser.error.message } };
@@ -230,11 +182,9 @@ export class SupabaseAuthRepository implements IAuthRepository {
 
   async logout(): Promise<Result<null, 'UNEXPECTED'>> {
     try {
-      const supabase = this.createSupabaseClient();
+      const supabase = await this.getSupabase();
       const { error } = await supabase.auth.signOut();
-      if (error) {
-        return { ok: false, error: { code: 'UNEXPECTED', message: 'Não foi possível sair.' } };
-      }
+      if (error) return { ok: false, error: { code: 'UNEXPECTED', message: 'Não foi possível sair.' } };
       return { ok: true, data: null };
     } catch {
       return { ok: false, error: { code: 'UNEXPECTED', message: 'Não foi possível sair.' } };
@@ -244,19 +194,13 @@ export class SupabaseAuthRepository implements IAuthRepository {
   async confirmEmail(params: { token: string }): Promise<Result<null, AuthErrorCode>> {
     const code = String(params.token ?? '').trim();
     if (!code) return { ok: false, error: { code: 'TOKEN_INVALID', message: 'Token inválido.' } };
-
-    // Token tratado como "code" de callback.
     return this.exchangeCodeForSession(code);
   }
 
   async resendEmailConfirmation(params: { email: Email }): Promise<Result<null, AuthErrorCode>> {
     try {
-      const supabase = this.createSupabaseClient();
-
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: params.email.getValue(),
-      });
+      const supabase = await this.getSupabase();
+      const { error } = await supabase.auth.resend({ type: 'signup', email: params.email.getValue() });
 
       if (error) {
         const mapped = mapAuthError(error);
@@ -272,9 +216,13 @@ export class SupabaseAuthRepository implements IAuthRepository {
 
   async requestPasswordReset(params: { email: Email }): Promise<Result<null, AuthErrorCode>> {
     try {
-      const supabase = this.createSupabaseClient();
+      const supabase = await this.getSupabase();
 
-      const { error } = await supabase.auth.resetPasswordForEmail(params.email.getValue());
+      const site = getSiteUrl();
+      const redirectTo = site ? `${site}/recuperar-senha` : undefined;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(params.email.getValue(), redirectTo ? { redirectTo } : undefined);
+
       if (error) {
         const mapped = mapAuthError(error);
         return { ok: false, error: { code: mapped.code, message: mapped.message } };
@@ -291,16 +239,12 @@ export class SupabaseAuthRepository implements IAuthRepository {
     const code = String(params.token ?? '').trim();
     if (!code) return { ok: false, error: { code: 'TOKEN_INVALID', message: 'Token inválido.' } };
 
-    // 1) troca "code" por sessão (seta cookies quando SSR)
     const exchanged = await this.exchangeCodeForSession(code);
     if (!exchanged.ok) return exchanged;
 
-    // 2) atualiza senha no contexto da sessão obtida
     try {
-      const supabase = this.createSupabaseClient();
-      const { error } = await supabase.auth.updateUser({
-        password: params.newPassword.getValueUnsafe(),
-      });
+      const supabase = await this.getSupabase();
+      const { error } = await supabase.auth.updateUser({ password: params.newPassword.getValueUnsafe() });
 
       if (error) {
         const mapped = mapAuthError(error);
