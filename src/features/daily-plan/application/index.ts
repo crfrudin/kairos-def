@@ -1,20 +1,24 @@
 // src/features/daily-plan/application/index.ts
+// Public API (Application Layer) — paths reais e estáveis
 
-// DTOS (V2)
+// DTOs (contratos simples do motor)
 export * from './dtos/PlanTypes';
 export * from './dtos/DailyPlanDTO';
 
-// PORTS (V2)
+// Errors (Application)
+export * from './errors/ExecutionAlreadyExistsError';
+export * from './errors/InsufficientTimeError';
+export * from './errors/InvalidInputError';
+export * from './errors/PlanningBlockedError';
+export * from './errors/PlanningError';
+export * from './errors/RestDayError';
+
+// Ports
 export * from './ports/IPlanningContextPort';
 export * from './ports/IDailyPlanPersistencePort';
+export * from './ports/ICalendarProjectionPersistencePort';
 export * from './ports/ISubjectsReader';
 
-// USE-CASES (V2)
+// Use-cases
 export * from './use-cases/GenerateDailyPlan';
-
-// SERVICES (V2) — opcionais para composição externa
-export * from './services/DailyPlanComposer';
-export * from './services/RestDayEvaluator';
-export * from './services/ReviewAllocator';
-export * from './services/ExtrasAllocator';
-export * from './services/TheoryAllocator';
+export * from './use-cases/GenerateCalendarProjection';
