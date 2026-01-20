@@ -30,17 +30,21 @@ export class TheoryAllocator {
     // teoria ocupa TODO o tempo restante (camada final)
     const theoryMinutes = remainingMinutes;
 
-    // se não há tempo, ainda assim plano determinístico: teoria 0
     if (theoryMinutes <= 0) {
       return { theoryMinutes: 0, remainingMinutes, items: [] };
     }
 
     const active = subjects.filter((s) => s.isActive);
-    const takeN = Math.min(subjectsPerDayLimit, active.length);
+
+    // Limite teórico por dia (normativo), mas:
+    // DB exige planned_minutes >= 1 por item.
+    // Portanto, não podemos criar mais itens do que theoryMinutes.
+    const maxItemsByTime = Math.max(0, Math.floor(theoryMinutes)); // minutos inteiros
+    const takeN = Math.min(subjectsPerDayLimit, active.length, maxItemsByTime);
 
     if (takeN === 0) {
-      // Sem matérias ativas: teoria existe como "tempo reservado", mas sem itens.
-      // Mantém determinismo (e evidencia falta de cadastros via itens vazios).
+      // Sem matérias ativas OU sem minutos suficientes para materializar itens (>=1 por item).
+      // Teoria ainda "consome" o bloco do dia (theoryMinutes), mas sem itens materializados.
       return { theoryMinutes, remainingMinutes: 0, items: [] };
     }
 
@@ -61,12 +65,29 @@ export class TheoryAllocator {
       nextCursor = (start + takeN) % active.length;
     }
 
-    const items: DailyPlanItemDTO[] = selected.map((s) => ({
-      type: 'THEORY',
-      title: `Teoria: ${s.name}`,
-      minutes: 0, // tempo de teoria é global do bloco; distribuição por matéria é definida em domínio/etapas futuras (sem heurística aqui)
-      metadata: { subjectId: s.id },
-    }));
+    // Distribuição determinística:
+    // - base = floor(theoryMinutes / takeN)
+    // - resto = theoryMinutes % takeN
+    // - primeiros "resto" recebem +1 minuto
+    // Garante planned_minutes >= 1 (pois takeN <= theoryMinutes e base >= 1 quando takeN <= theoryMinutes).
+    const base = Math.floor(theoryMinutes / takeN);
+    const rest = theoryMinutes % takeN;
+
+    const items: DailyPlanItemDTO[] = selected.map((s, idx) => {
+      const minutes = base + (idx < rest ? 1 : 0);
+
+      // Defesa: DB exige 1..1440
+      if (minutes < 1 || minutes > 1440) {
+        throw new Error(`THEORY_ALLOCATION_INVALID_MINUTES: minutes=${minutes} subject=${s.id}`);
+      }
+
+      return {
+        type: 'THEORY',
+        title: `Teoria: ${s.name}`,
+        minutes,
+        metadata: { subjectId: s.id },
+      };
+    });
 
     return { theoryMinutes, remainingMinutes: 0, items, nextCycleCursor: nextCursor };
   }
