@@ -13,8 +13,8 @@ async function withRlsClient<T>(pool: Pool, userId: UUID, work: (c: PoolClient) 
   const client = await pool.connect();
   try {
     await client.query('begin');
-    
-    await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId]);
+
+        await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId]);
     await client.query(`select set_config('request.jwt.claims', $1, true)`, [
       JSON.stringify({ sub: userId, role: 'authenticated' }),
     ]);
@@ -72,6 +72,7 @@ describe('FASE 1 · BLOCO 5 · PASSO 3 — Atomicidade com rollback real', () =>
   it('Rollback total quando há violação de CHECK constraint no meio da substituição integral', async () => {
     const now = '2026-01-20T00:00:00.000Z';
 
+    // contrato inválido no DB: subjectsPerDayLimit fora do CHECK [1..9]
     const bad = makeContract(userA, 999);
 
     await expect(
@@ -81,6 +82,7 @@ describe('FASE 1 · BLOCO 5 · PASSO 3 — Atomicidade com rollback real', () =>
       })
     ).rejects.toBeTruthy();
 
+    // Prova material: estado anterior permanece intacto (subjectsPerDayLimit=3)
     const after = await withRlsClient(pool, userA, async (c) => {
       const repo = new PgProfileRepository(c);
       return repo.getFullContract(userA);
@@ -94,6 +96,7 @@ describe('FASE 1 · BLOCO 5 · PASSO 3 — Atomicidade com rollback real', () =>
   it('Rollback total quando falha ocorre após DELETE de weekday_rules (evita estado parcial observável)', async () => {
     const now = '2026-01-20T00:00:00.000Z';
 
+    // Vamos forçar falha na inserção de weekday_rules com weekday inválido (CHECK 1..7)
     const bad = makeContract(userA, 3);
     (bad.weekdayRules as any)[0].weekday = 99;
 
@@ -104,6 +107,7 @@ describe('FASE 1 · BLOCO 5 · PASSO 3 — Atomicidade com rollback real', () =>
       })
     ).rejects.toBeTruthy();
 
+    // Prova material: weekday_rules ainda existe com 7 itens válidos após rollback
     const after = await withRlsClient(pool, userA, async (c) => {
       const repo = new PgProfileRepository(c);
       return repo.getFullContract(userA);

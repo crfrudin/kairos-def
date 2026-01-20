@@ -14,8 +14,8 @@ async function withRlsClient<T>(pool: Pool, userId: UUID, work: (c: PoolClient) 
   try {
     await client.query('begin');
 
-    // NÃO setar role do Postgres (pooler/user não tem permissão e nem precisamos)
-    await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId]);
+    // espelha PgProfileTransaction (claims locais à transação)
+        await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId]);
     await client.query(`select set_config('request.jwt.claims', $1, true)`, [
       JSON.stringify({ sub: userId, role: 'authenticated' }),
     ]);
@@ -36,13 +36,9 @@ async function withNoClaimsClient<T>(pool: Pool, work: (c: PoolClient) => Promis
   const client = await pool.connect();
   try {
     await client.query('begin');
-
-    // Sem claims => auth.uid() deve ser NULL
     await client.query(`select set_config('request.jwt.claim.sub', '', true)`);
     await client.query(`select set_config('request.jwt.claims', '', true)`);
-
     const result = await work(client);
-
     await client.query('rollback');
     return result;
   } catch (err) {
@@ -174,6 +170,7 @@ describe('FASE 1 · BLOCO 5 · PASSO 2 — Integração com DB real + RLS', () =
     ] as const;
 
     for (const t of tables) {
+      // eslint-disable-next-line no-await-in-loop
       const n = await withRlsClient(pool, userA, async (c) => {
         const res = await c.query(`select count(*)::int as n from public.${t} where user_id = $1`, [userB]);
         return Number(res.rows[0].n);
