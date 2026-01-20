@@ -1,9 +1,14 @@
 import 'server-only';
 
 import type { GenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GenerateDailyPlan';
+import type { RegenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/RegenerateDailyPlan';
 import type { GenerateCalendarProjectionUseCase } from '@/features/daily-plan/application/use-cases/GenerateCalendarProjection';
 
-import { createGenerateDailyPlanUseCase, createGenerateCalendarProjectionUseCase } from '@/core/composition/daily-plan-composition';
+import {
+  createGenerateDailyPlanUseCase,
+  createRegenerateDailyPlanUseCase,
+  createGenerateCalendarProjectionUseCase,
+} from '@/core/composition/daily-plan-composition';
 
 import type { IPlanningContextPort } from '@/features/daily-plan/application/ports/IPlanningContextPort';
 import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
@@ -20,6 +25,7 @@ export interface DailyPlanSsrComposition {
   calendarProjectionPersistencePort: ICalendarProjectionPersistencePort;
 
   generateDailyPlanUseCase: GenerateDailyPlanUseCase;
+  regenerateDailyPlanUseCase: RegenerateDailyPlanUseCase;
   generateCalendarProjectionUseCase: GenerateCalendarProjectionUseCase;
 }
 
@@ -30,6 +36,11 @@ export function createDailyPlanSsrComposition(): DailyPlanSsrComposition {
   const calendarProjectionPersistencePort = new SupabaseCalendarProjectionPersistencePortSSR();
 
   const generateDailyPlanUseCase = createGenerateDailyPlanUseCase({
+    contextPort,
+    persistencePort: dailyPlanPersistencePort,
+  });
+
+  const regenerateDailyPlanUseCase = createRegenerateDailyPlanUseCase({
     contextPort,
     persistencePort: dailyPlanPersistencePort,
   });
@@ -46,6 +57,7 @@ export function createDailyPlanSsrComposition(): DailyPlanSsrComposition {
     calendarProjectionPersistencePort,
 
     generateDailyPlanUseCase,
+    regenerateDailyPlanUseCase,
     generateCalendarProjectionUseCase,
   };
 }

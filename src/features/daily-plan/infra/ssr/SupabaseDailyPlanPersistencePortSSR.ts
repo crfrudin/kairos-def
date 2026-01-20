@@ -136,13 +136,13 @@ export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistenc
       user_id: entry.userId,
       range_start: entry.date, // UC-01: geração de 1 dia => range_start=range_end
       range_end: entry.date,
-      reason: 'system', // UC-01 base (sem regra adicional)
+      reason: entry.reason,
       normative_context: {
         inputHash: entry.inputHash,
         outputHash: entry.outputHash,
       },
       occurred_at: entry.generatedAtIso,
-      notes: null,
+      notes: entry.notes ?? null,
     });
 
     if (ins.error) {

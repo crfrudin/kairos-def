@@ -22,3 +22,4 @@ export * from './ports/ISubjectsReader';
 // Use-cases
 export * from './use-cases/GenerateDailyPlan';
 export * from './use-cases/GenerateCalendarProjection';
+export * from './use-cases/RegenerateDailyPlan';

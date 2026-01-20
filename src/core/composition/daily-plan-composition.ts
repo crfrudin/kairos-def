@@ -6,9 +6,10 @@ import { DailyPlanComposer } from '@/features/daily-plan/application/services/Da
 
 import type { IPlanningContextPort } from '@/features/daily-plan/application/ports/IPlanningContextPort';
 import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
-import { GenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GenerateDailyPlan';
-
 import type { ICalendarProjectionPersistencePort } from '@/features/daily-plan/application/ports/ICalendarProjectionPersistencePort';
+
+import { GenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GenerateDailyPlan';
+import { RegenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/RegenerateDailyPlan';
 import { GenerateCalendarProjectionUseCase } from '@/features/daily-plan/application/use-cases/GenerateCalendarProjection';
 
 export const createDailyPlanComposer = (): DailyPlanComposer => {
@@ -23,17 +24,10 @@ export const createDailyPlanComposer = (): DailyPlanComposer => {
 export interface CreateGenerateDailyPlanUseCaseDeps {
   contextPort: IPlanningContextPort;
   persistencePort: IDailyPlanPersistencePort;
-
-  /**
-   * Clock injetável:
-   * - NÃO afeta o plano (output), apenas auditoria.
-   */
   nowIso?: () => string;
 }
 
-export const createGenerateDailyPlanUseCase = (
-  deps: CreateGenerateDailyPlanUseCaseDeps
-): GenerateDailyPlanUseCase => {
+export const createGenerateDailyPlanUseCase = (deps: CreateGenerateDailyPlanUseCaseDeps): GenerateDailyPlanUseCase => {
   const composer = createDailyPlanComposer();
 
   return new GenerateDailyPlanUseCase({
@@ -44,19 +38,28 @@ export const createGenerateDailyPlanUseCase = (
   });
 };
 
+export interface CreateRegenerateDailyPlanUseCaseDeps {
+  contextPort: IPlanningContextPort;
+  persistencePort: IDailyPlanPersistencePort;
+  nowIso?: () => string;
+}
+
+export const createRegenerateDailyPlanUseCase = (
+  deps: CreateRegenerateDailyPlanUseCaseDeps
+): RegenerateDailyPlanUseCase => {
+  const composer = createDailyPlanComposer();
+
+  return new RegenerateDailyPlanUseCase({
+    contextPort: deps.contextPort,
+    persistencePort: deps.persistencePort,
+    composer,
+    nowIso: deps.nowIso ?? (() => new Date().toISOString()),
+  });
+};
+
 export interface CreateGenerateCalendarProjectionUseCaseDeps {
   contextPort: IPlanningContextPort;
-
-  /**
-   * Observa o contrato do UC-02:
-   * GenerateCalendarProjectionDeps exige "persistencePort".
-   */
   persistencePort: ICalendarProjectionPersistencePort;
-
-  /**
-   * Clock injetável:
-   * - NÃO afeta o conteúdo do plano (output), apenas auditoria.
-   */
   nowIso?: () => string;
 }
 
