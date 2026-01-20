@@ -5,6 +5,7 @@ import { assertIsoDate } from '../services/DateUtil';
 import { DailyPlanComposer } from '../services/DailyPlanComposer';
 import { stableStringify, sha256Hex } from '../services/HashUtil';
 import { InvalidInputError } from '../errors/InvalidInputError';
+import { PlanningBlockedError } from '../errors/PlanningBlockedError';
 
 export interface GenerateDailyPlanInput {
   userId: string;
@@ -52,6 +53,25 @@ export class GenerateDailyPlanUseCase {
       throw new InvalidInputError({ message: 'Contexto inconsistente (date).', field: 'date' });
     }
 
+    // 1.1) BLOQUEIOS NORMATIVOS (fail-fast, determinístico)
+
+    // Proibição de gerar/regerar após execução registrada (executed_days é factual/imutável)
+    if (ctx.hasExecution) {
+      throw new PlanningBlockedError({
+        date: input.date,
+        reason: 'day_already_executed',
+      });
+    }
+
+    // Modo CICLO requer persistência oficial do cursor; enquanto não existir, é proibido prosseguir.
+    // (Não é permitido "inventar" storage, nem ignorar updateCycleCursor silenciosamente.)
+    if (ctx.profile.studyMode === 'CICLO') {
+      throw new PlanningBlockedError({
+        date: input.date,
+        reason: 'cycle_cursor_storage_not_defined',
+      });
+    }
+
     // 2) Compõe o plano (ordem normativa fixa):
     // descanso -> revisões -> extras -> teoria
     const { plan, nextCycleCursor } = this.deps.composer.compose(ctx);
@@ -63,6 +83,7 @@ export class GenerateDailyPlanUseCase {
     });
 
     // 4) Atualiza cursor do CICLO (se aplicável)
+    // Observação: atualmente bloqueado acima por regra normativa (CICLO indisponível sem storage oficial).
     if (typeof nextCycleCursor === 'number') {
       await this.deps.persistencePort.updateCycleCursor({
         userId: input.userId,
