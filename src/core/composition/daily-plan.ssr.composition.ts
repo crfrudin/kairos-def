@@ -1,34 +1,33 @@
 import 'server-only';
 
-import type { IPlanningContextPort } from '@/features/daily-plan/application/ports/IPlanningContextPort';
-import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
+import type { GenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GenerateDailyPlan';
 import { createGenerateDailyPlanUseCase } from '@/core/composition/daily-plan-composition';
 
+import type { IPlanningContextPort } from '@/features/daily-plan/application/ports/IPlanningContextPort';
+import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
+
+import { SupabasePlanningContextPortSSR } from '@/features/daily-plan/infra/ssr/SupabasePlanningContextPortSSR';
 import { SupabaseDailyPlanPersistencePortSSR } from '@/features/daily-plan/infra/ssr/SupabaseDailyPlanPersistencePortSSR';
 
 export interface DailyPlanSsrComposition {
-  persistencePort: IDailyPlanPersistencePort;
   contextPort: IPlanningContextPort;
+  persistencePort: IDailyPlanPersistencePort;
 
-  generateDailyPlanUseCase: ReturnType<typeof createGenerateDailyPlanUseCase>;
+  generateDailyPlanUseCase: GenerateDailyPlanUseCase;
 }
 
-/**
- * Composition SSR do daily-plan.
- * - Persistência: implementada (RLS via SSR client)
- * - Contexto: deve ser injetado (depende do schema de subjects e do cursor do CICLO)
- */
-export function createDailyPlanSsrComposition(deps: { contextPort: IPlanningContextPort }): DailyPlanSsrComposition {
-  const persistencePort: IDailyPlanPersistencePort = new SupabaseDailyPlanPersistencePortSSR();
+export function createDailyPlanSsrComposition(): DailyPlanSsrComposition {
+  const contextPort = new SupabasePlanningContextPortSSR();
+  const persistencePort = new SupabaseDailyPlanPersistencePortSSR();
 
   const generateDailyPlanUseCase = createGenerateDailyPlanUseCase({
-    contextPort: deps.contextPort,
+    contextPort,
     persistencePort,
   });
 
   return {
+    contextPort,
     persistencePort,
-    contextPort: deps.contextPort,
     generateDailyPlanUseCase,
   };
 }
