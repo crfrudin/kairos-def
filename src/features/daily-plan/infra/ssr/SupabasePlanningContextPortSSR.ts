@@ -172,7 +172,7 @@ export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
     // =========================
     // 2) SUBJECTS (FASE 2) — ainda não existe
     // =========================
-    const subjects = [];
+    const subjects: SubjectTheoryDTO[] = [];
 
     // =========================
     // 3) REVIEW TASKS (review_ledger)
