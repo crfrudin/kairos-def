@@ -1,5 +1,7 @@
 import 'server-only';
 
+import type { SubjectTheoryDTO } from '@/features/daily-plan/application/dtos/PlanTypes';
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/features/auth/infra/ssr/createSupabaseServerClient';
 
