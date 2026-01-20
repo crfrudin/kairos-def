@@ -4,7 +4,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/features/auth/infra/ssr/createSupabaseServerClient';
 
 import type { IPlanningContextPort, PlanningContext } from '@/features/daily-plan/application/ports/IPlanningContextPort';
-import type { AutoReviewPolicyDTO, ExtrasDurationsDTO, ProfileRulesDTO, WeekdayRuleDTO } from '@/features/daily-plan/application/dtos/PlanTypes';
+import type {
+  AutoReviewPolicyDTO,
+  ExtrasDurationsDTO,
+  ProfileRulesDTO,
+  WeekdayRuleDTO,
+  ReviewTaskDTO,
+} from '@/features/daily-plan/application/dtos/PlanTypes';
 
 type DbProfileRulesRow = {
   user_id: string;
@@ -40,15 +46,25 @@ type DbAutoReviewPolicyRow = {
 type DbRestPeriodRow = {
   user_id: string;
   start_date: string; // YYYY-MM-DD
-  end_date: string;   // YYYY-MM-DD
+  end_date: string; // YYYY-MM-DD
 };
 
-function isoWeekday(dateIso: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
-  // Determinístico: trata como meia-noite UTC.
-  const d = new Date(`${dateIso}T00:00:00.000Z`);
-  const day = d.getUTCDay(); // 0..6 (Dom..Sáb)
-  const mapped = day === 0 ? 7 : day; // 7=Dom
-  return mapped as 1 | 2 | 3 | 4 | 5 | 6 | 7;
+type DbReviewLedgerRow = {
+  id: string;
+  due_date: string; // YYYY-MM-DD
+  subject_id: string | null;
+  status: 'PENDING' | 'DONE' | 'LOST';
+  meta: Record<string, unknown> | null;
+};
+
+function readString(meta: Record<string, unknown> | null | undefined, key: string): string | null {
+  const v = meta?.[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+function readNumber(meta: Record<string, unknown> | null | undefined, key: string): number | null {
+  const v = meta?.[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
@@ -58,7 +74,6 @@ export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
 
   public async getPlanningContext(params: { userId: string; date: string }): Promise<PlanningContext> {
     const { userId, date } = params;
-
     const client = await this.getClient();
 
     // =========================
@@ -157,7 +172,6 @@ export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
     // =========================
     // 2) SUBJECTS (FASE 2) — ainda não existe
     // =========================
-    // Importante: NÃO acoplar aqui. Retorna vazio por enquanto.
     const subjects = [];
 
     // =========================
@@ -168,24 +182,32 @@ export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
       .select('id, due_date, subject_id, meta, status')
       .eq('user_id', userId)
       .eq('due_date', date)
-      .eq('status', 'PENDING');
+      .eq('status', 'PENDING')
+      .returns<DbReviewLedgerRow[]>();
 
     if (reviewRes.error) {
       throw new Error(`DB_SELECT_REVIEW_LEDGER_FAILED: ${reviewRes.error.message}`);
     }
 
-    const reviewTasks = (reviewRes.data ?? []).map((r: any) => {
+    const reviewTasks: ReviewTaskDTO[] = (reviewRes.data ?? []).map((r) => {
+      const meta = r.meta ?? {};
       const subjectId = (r.subject_id ?? 'UNKNOWN_SUBJECT') as string;
-      const subjectName = (r.meta?.subjectName ?? subjectId) as string;
-      const reviewMinutes = Number(r.meta?.reviewMinutes ?? r.meta?.plannedMinutes ?? 0);
+
+      const subjectName = readString(meta, 'subjectName') ?? subjectId;
+      const sourceDate = readString(meta, 'sourceDate') ?? date;
+
+      const reviewMinutes =
+        readNumber(meta, 'reviewMinutes') ??
+        readNumber(meta, 'plannedMinutes') ??
+        1;
 
       return {
         id: String(r.id),
-        sourceDate: String(r.meta?.sourceDate ?? date),
+        sourceDate,
         subjectId,
         subjectName,
         scheduledDate: String(r.due_date),
-        reviewMinutes: Number.isFinite(reviewMinutes) && reviewMinutes > 0 ? reviewMinutes : 1,
+        reviewMinutes: reviewMinutes > 0 ? Math.floor(reviewMinutes) : 1,
       };
     });
 
@@ -203,12 +225,11 @@ export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
       throw new Error(`DB_SELECT_EXECUTED_DAYS_FAILED: ${execRes.error.message}`);
     }
 
-    const hasExecution = Boolean(execRes.data?.id);
+    const hasExecution = Boolean((execRes.data as { id?: string } | null)?.id);
 
     // =========================
-    // 5) CYCLE CURSOR (ainda não há persistência oficial)
+    // 5) CYCLE CURSOR (sem persistência oficial ainda)
     // =========================
-    // Não definimos cursor aqui.
 
     return {
       userId,
