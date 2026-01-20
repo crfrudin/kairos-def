@@ -17,9 +17,11 @@ export * from './errors/RestDayError';
 export * from './ports/IPlanningContextPort';
 export * from './ports/IDailyPlanPersistencePort';
 export * from './ports/ICalendarProjectionPersistencePort';
+export * from './ports/IExecutionPersistencePort';
 export * from './ports/ISubjectsReader';
 
 // Use-cases
 export * from './use-cases/GenerateDailyPlan';
 export * from './use-cases/GenerateCalendarProjection';
 export * from './use-cases/RegenerateDailyPlan';
+export * from './use-cases/ExecuteDay';

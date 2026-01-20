@@ -5,12 +5,16 @@ import { TheoryAllocator } from '@/features/daily-plan/application/services/Theo
 import { DailyPlanComposer } from '@/features/daily-plan/application/services/DailyPlanComposer';
 
 import type { IPlanningContextPort } from '@/features/daily-plan/application/ports/IPlanningContextPort';
-import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
-import type { ICalendarProjectionPersistencePort } from '@/features/daily-plan/application/ports/ICalendarProjectionPersistencePort';
 
+import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
 import { GenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GenerateDailyPlan';
 import { RegenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/RegenerateDailyPlan';
+
+import type { ICalendarProjectionPersistencePort } from '@/features/daily-plan/application/ports/ICalendarProjectionPersistencePort';
 import { GenerateCalendarProjectionUseCase } from '@/features/daily-plan/application/use-cases/GenerateCalendarProjection';
+
+import type { IExecutionPersistencePort } from '@/features/daily-plan/application/ports/IExecutionPersistencePort';
+import { ExecuteDayUseCase } from '@/features/daily-plan/application/use-cases/ExecuteDay';
 
 export const createDailyPlanComposer = (): DailyPlanComposer => {
   const restDayEvaluator = new RestDayEvaluator();
@@ -24,6 +28,7 @@ export const createDailyPlanComposer = (): DailyPlanComposer => {
 export interface CreateGenerateDailyPlanUseCaseDeps {
   contextPort: IPlanningContextPort;
   persistencePort: IDailyPlanPersistencePort;
+
   nowIso?: () => string;
 }
 
@@ -41,6 +46,7 @@ export const createGenerateDailyPlanUseCase = (deps: CreateGenerateDailyPlanUseC
 export interface CreateRegenerateDailyPlanUseCaseDeps {
   contextPort: IPlanningContextPort;
   persistencePort: IDailyPlanPersistencePort;
+
   nowIso?: () => string;
 }
 
@@ -59,7 +65,13 @@ export const createRegenerateDailyPlanUseCase = (
 
 export interface CreateGenerateCalendarProjectionUseCaseDeps {
   contextPort: IPlanningContextPort;
+
+  /**
+   * Observa o contrato do UC-02:
+   * GenerateCalendarProjectionDeps exige "persistencePort".
+   */
   persistencePort: ICalendarProjectionPersistencePort;
+
   nowIso?: () => string;
 }
 
@@ -72,6 +84,21 @@ export const createGenerateCalendarProjectionUseCase = (
     contextPort: deps.contextPort,
     persistencePort: deps.persistencePort,
     composer,
+    nowIso: deps.nowIso ?? (() => new Date().toISOString()),
+  });
+};
+
+export interface CreateExecuteDayUseCaseDeps {
+  contextPort: IPlanningContextPort;
+  executionPersistencePort: IExecutionPersistencePort;
+
+  nowIso?: () => string;
+}
+
+export const createExecuteDayUseCase = (deps: CreateExecuteDayUseCaseDeps): ExecuteDayUseCase => {
+  return new ExecuteDayUseCase({
+    contextPort: deps.contextPort,
+    executionPersistencePort: deps.executionPersistencePort,
     nowIso: deps.nowIso ?? (() => new Date().toISOString()),
   });
 };
