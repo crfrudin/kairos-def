@@ -1,7 +1,10 @@
 name: FASE 1 · BLOCO 5 · PASSOS 2-3 (RLS + Atomicidade)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
+
 
 jobs:
   rls_atomicity:
