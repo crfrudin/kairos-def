@@ -13,7 +13,12 @@ export class TheoryAllocator {
 
     // apenas CICLO
     cycleCursor?: number;
-  }): { theoryMinutes: number; remainingMinutes: number; items: DailyPlanItemDTO[]; nextCycleCursor?: number } {
+  }): {
+    theoryMinutes: number;
+    remainingMinutes: number;
+    items: DailyPlanItemDTO[];
+    nextCycleCursor?: number;
+  } {
     const {
       remainingMinutes,
       weekdayHasTheory,
@@ -30,21 +35,16 @@ export class TheoryAllocator {
     // teoria ocupa TODO o tempo restante (camada final)
     const theoryMinutes = remainingMinutes;
 
+    // se não há tempo, ainda assim plano determinístico
     if (theoryMinutes <= 0) {
       return { theoryMinutes: 0, remainingMinutes, items: [] };
     }
 
     const active = subjects.filter((s) => s.isActive);
-
-    // Limite teórico por dia (normativo), mas:
-    // DB exige planned_minutes >= 1 por item.
-    // Portanto, não podemos criar mais itens do que theoryMinutes.
-    const maxItemsByTime = Math.max(0, Math.floor(theoryMinutes)); // minutos inteiros
-    const takeN = Math.min(subjectsPerDayLimit, active.length, maxItemsByTime);
+    const takeN = Math.min(subjectsPerDayLimit, active.length);
 
     if (takeN === 0) {
-      // Sem matérias ativas OU sem minutos suficientes para materializar itens (>=1 por item).
-      // Teoria ainda "consome" o bloco do dia (theoryMinutes), mas sem itens materializados.
+      // Sem matérias ativas: teoria existe como "tempo reservado", mas sem itens.
       return { theoryMinutes, remainingMinutes: 0, items: [] };
     }
 
@@ -55,7 +55,6 @@ export class TheoryAllocator {
       selected = active.slice(0, takeN);
     } else {
       const start = typeof cycleCursor === 'number' ? cycleCursor : 0;
-      selected = [];
 
       for (let i = 0; i < takeN; i++) {
         const idx = (start + i) % active.length;
@@ -65,30 +64,45 @@ export class TheoryAllocator {
       nextCursor = (start + takeN) % active.length;
     }
 
-    // Distribuição determinística:
-    // - base = floor(theoryMinutes / takeN)
-    // - resto = theoryMinutes % takeN
-    // - primeiros "resto" recebem +1 minuto
-    // Garante planned_minutes >= 1 (pois takeN <= theoryMinutes e base >= 1 quando takeN <= theoryMinutes).
-    const base = Math.floor(theoryMinutes / takeN);
-    const rest = theoryMinutes % takeN;
+    /**
+     * DISTRIBUIÇÃO DETERMINÍSTICA (sem heurística):
+     * - Divide theoryMinutes entre as matérias selecionadas
+     * - Parte inteira para todas
+     * - Resto (+1) nos primeiros `remainder` itens
+     *
+     * Observação: DDL exige planned_minutes >= 1 quando existir item.
+     */
+    const base = Math.floor(theoryMinutes / selected.length);
+    const remainder = theoryMinutes % selected.length;
 
-    const items: DailyPlanItemDTO[] = selected.map((s, idx) => {
-      const minutes = base + (idx < rest ? 1 : 0);
+    const minutesByIndex = selected.map((_, idx) => base + (idx < remainder ? 1 : 0));
 
-      // Defesa: DB exige 1..1440
-      if (minutes < 1 || minutes > 1440) {
-        throw new Error(`THEORY_ALLOCATION_INVALID_MINUTES: minutes=${minutes} subject=${s.id}`);
-      }
+    // Garantia defensiva: se theoryMinutes>0, cada item deve ter >=1
+    // Isso só falharia se selected.length > theoryMinutes (ex.: 3 matérias, 2 minutos).
+    // Nesse caso, reduz deterministicamente para `theoryMinutes` matérias (1 min cada).
+    let finalSelected = selected;
+    let finalMinutes = minutesByIndex;
 
-      return {
-        type: 'THEORY',
-        title: `Teoria: ${s.name}`,
-        minutes,
-        metadata: { subjectId: s.id },
-      };
-    });
+    if (finalSelected.length > theoryMinutes) {
+      finalSelected = selected.slice(0, theoryMinutes);
+      finalMinutes = Array.from({ length: theoryMinutes }, () => 1);
+      nextCursor = studyMode === 'CICLO'
+        ? ((typeof cycleCursor === 'number' ? cycleCursor : 0) + finalSelected.length) % active.length
+        : undefined;
+    }
 
-    return { theoryMinutes, remainingMinutes: 0, items, nextCycleCursor: nextCursor };
+    const items: DailyPlanItemDTO[] = finalSelected.map((s, idx) => ({
+      type: 'THEORY',
+      title: `Teoria: ${s.name}`,
+      minutes: finalMinutes[idx],
+      metadata: { subjectId: s.id },
+    }));
+
+    return {
+      theoryMinutes,
+      remainingMinutes: 0,
+      items,
+      nextCycleCursor: nextCursor,
+    };
   }
 }
