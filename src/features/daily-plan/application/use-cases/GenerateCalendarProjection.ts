@@ -31,10 +31,10 @@ export interface GenerateCalendarProjectionDeps {
 }
 
 /**
- * UC-02: Gera projeção regenerável para um intervalo.
- * - NÃO grava executed_days (factual).
+ * UC-02: Projeção regenerável por intervalo.
+ * - NÃO escreve executed_days.
  * - Pode gravar cache regenerável em calendar_projections.
- * - Regra estrutural do DDL: intervalo máx 90 dias (defensivo).
+ * - Regra defensiva: máx 90 dias (DDL já impõe).
  */
 export class GenerateCalendarProjectionUseCase {
   constructor(private readonly deps: GenerateCalendarProjectionDeps) {}
@@ -60,7 +60,7 @@ export class GenerateCalendarProjectionUseCase {
       throw new InvalidInputError({ message: 'rangeStart deve ser <= rangeEnd.', field: 'rangeStart' });
     }
 
-    // Inclusivo: diffDays = (end-start)/1day
+    // Inclusivo
     const diffDays = Math.floor((end.getTime() - start.getTime()) / 86400000);
     if (diffDays > 90) {
       throw new InvalidInputError({ message: 'Intervalo máximo é 90 dias.', field: 'rangeEnd' });
@@ -77,7 +77,6 @@ export class GenerateCalendarProjectionUseCase {
         date: iso,
       });
 
-      // consistência mínima
       if (ctx.userId !== input.userId) {
         throw new InvalidInputError({ message: 'Contexto inconsistente (userId).', field: 'userId' });
       }
@@ -85,13 +84,10 @@ export class GenerateCalendarProjectionUseCase {
         throw new InvalidInputError({ message: 'Contexto inconsistente (date).', field: 'rangeStart' });
       }
 
-      // BLOQUEIOS (mesma filosofia do UC-01)
+      // Bloqueios (mesma filosofia UC-01)
       if (ctx.hasExecution) {
-        // Para projeção, dia executado existe como fato; NÃO projetamos por cima.
-        // Indicamos bloqueio determinístico.
         throw new PlanningBlockedError({ date: iso, reason: 'day_already_executed' });
       }
-
       if (ctx.profile.studyMode === 'CICLO') {
         throw new PlanningBlockedError({ date: iso, reason: 'cycle_cursor_storage_not_defined' });
       }
@@ -100,7 +96,6 @@ export class GenerateCalendarProjectionUseCase {
       days.push(plan);
     }
 
-    // Auditoria determinística (hashes)
     const inputHash = sha256Hex(
       stableStringify({
         userId: input.userId,

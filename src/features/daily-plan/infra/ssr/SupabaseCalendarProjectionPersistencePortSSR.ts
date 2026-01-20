@@ -41,8 +41,7 @@ export class SupabaseCalendarProjectionPersistencePortSSR implements ICalendarPr
   public async upsertCalendarProjection(input: UpsertCalendarProjectionInput): Promise<void> {
     const client = await this.getClient();
 
-    // Estratégia simples e determinística: grava uma linha por geração (id uuid PK do DDL).
-    // Como é regenerável, múltiplas projeções podem coexistir; o consumidor escolhe a mais recente.
+    // Projeção é regenerável; gravamos uma linha por geração (mais recente vence por generated_at).
     const ins = await client.from('calendar_projections').insert({
       user_id: input.userId,
       range_start: input.rangeStart,

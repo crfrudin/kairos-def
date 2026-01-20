@@ -27,7 +27,6 @@ export interface DailyPlanSsrComposition {
 
 export function createDailyPlanSsrComposition(): DailyPlanSsrComposition {
   const contextPort = new SupabasePlanningContextPortSSR();
-
   const persistencePort = new SupabaseDailyPlanPersistencePortSSR();
   const projectionPersistencePort = new SupabaseCalendarProjectionPersistencePortSSR();
 

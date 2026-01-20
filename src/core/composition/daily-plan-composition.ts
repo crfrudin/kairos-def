@@ -23,12 +23,6 @@ export const createDailyPlanComposer = (): DailyPlanComposer => {
 export interface CreateGenerateDailyPlanUseCaseDeps {
   contextPort: IPlanningContextPort;
   persistencePort: IDailyPlanPersistencePort;
-
-  /**
-   * Clock injetável:
-   * - NÃO interfere no output do plano (somente auditoria do log).
-   * - default: new Date().toISOString()
-   */
   nowIso?: () => string;
 }
 
@@ -46,11 +40,6 @@ export const createGenerateDailyPlanUseCase = (deps: CreateGenerateDailyPlanUseC
 export interface CreateGenerateCalendarProjectionUseCaseDeps {
   contextPort: IPlanningContextPort;
   projectionPersistencePort: ICalendarProjectionPersistencePort;
-
-  /**
-   * Clock injetável:
-   * - NÃO interfere no output do plano (somente auditoria do log).
-   */
   nowIso?: () => string;
 }
 
