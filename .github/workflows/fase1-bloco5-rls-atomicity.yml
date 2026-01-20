@@ -33,11 +33,11 @@ jobs:
         run: node -e "const req=['DATABASE_URL','TEST_USER_A_ID','TEST_USER_B_ID']; for (const k of req){ if(!process.env[k]){ console.error('Missing env:',k); process.exit(1);} } console.log('env ok');"
 
       - name: Pre-check 2 — DB connectivity (select 1)
-        run: node -e "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL, ssl:{rejectUnauthorized:false}});await c.connect();const r=await c.query('select 1 as ok');console.log(r.rows[0]);await c.end();})().catch(e=>{console.error(e.message||e);process.exit(1);});"
+        run: node -e "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL, ssl:{true}});await c.connect();const r=await c.query('select 1 as ok');console.log(r.rows[0]);await c.end();})().catch(e=>{console.error(e.message||e);process.exit(1);});"
 
       - name: Pre-check 3 — role must NOT be superuser/bypassrls
         run: |
-          node -e "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL, ssl:{rejectUnauthorized:false}});await c.connect();const r=await c.query(\`select current_user as rolname, (select rolbypassrls from pg_roles where rolname=current_user) as rolbypassrls, (select rolsuper from pg_roles where rolname=current_user) as rolsuper\`);console.log(r.rows[0]);const x=r.rows[0];if(x.rolsuper||x.rolbypassrls){console.error('INVALID ROLE: must not be superuser/bypassrls');process.exit(2);}await c.end();})().catch(e=>{console.error(e.message||e);process.exit(1);});"
+          node -e "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL, ssl:{true}});await c.connect();const r=await c.query(\`select current_user as rolname, (select rolbypassrls from pg_roles where rolname=current_user) as rolbypassrls, (select rolsuper from pg_roles where rolname=current_user) as rolsuper\`);console.log(r.rows[0]);const x=r.rows[0];if(x.rolsuper||x.rolbypassrls){console.error('INVALID ROLE: must not be superuser/bypassrls');process.exit(2);}await c.end();})().catch(e=>{console.error(e.message||e);process.exit(1);});"
 
       - name: Run tests (vitest)
         run: npm run test
