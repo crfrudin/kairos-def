@@ -1,4 +1,5 @@
 // src/features/profile/index.ts
+import 'server-only';
 
 import { getPgPool } from '@/features/profile/infra/db/pgPool';
 import { PgProfileTransaction } from '@/features/profile/infra/transactions/PgProfileTransaction';
@@ -57,3 +58,6 @@ export function createProfileUseCases(params: { userId: UUID }) {
 
   return { getProfile, updateProfile };
 }
+
+// Public API UI (BLOCO 6)
+export * from './ui/profile-edit';
