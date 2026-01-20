@@ -8,18 +8,16 @@ import type { IPlanningContextPort } from '@/features/daily-plan/application/por
 import type { IDailyPlanPersistencePort } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
 import { GenerateDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GenerateDailyPlan';
 
+import type { ICalendarProjectionPersistencePort } from '@/features/daily-plan/application/ports/ICalendarProjectionPersistencePort';
+import { GenerateCalendarProjectionUseCase } from '@/features/daily-plan/application/use-cases/GenerateCalendarProjection';
+
 export const createDailyPlanComposer = (): DailyPlanComposer => {
   const restDayEvaluator = new RestDayEvaluator();
   const reviewAllocator = new ReviewAllocator();
   const extrasAllocator = new ExtrasAllocator();
   const theoryAllocator = new TheoryAllocator();
 
-  return new DailyPlanComposer(
-    restDayEvaluator,
-    reviewAllocator,
-    extrasAllocator,
-    theoryAllocator
-  );
+  return new DailyPlanComposer(restDayEvaluator, reviewAllocator, extrasAllocator, theoryAllocator);
 };
 
 export interface CreateGenerateDailyPlanUseCaseDeps {
@@ -34,14 +32,36 @@ export interface CreateGenerateDailyPlanUseCaseDeps {
   nowIso?: () => string;
 }
 
-export const createGenerateDailyPlanUseCase = (
-  deps: CreateGenerateDailyPlanUseCaseDeps
-): GenerateDailyPlanUseCase => {
+export const createGenerateDailyPlanUseCase = (deps: CreateGenerateDailyPlanUseCaseDeps): GenerateDailyPlanUseCase => {
   const composer = createDailyPlanComposer();
 
   return new GenerateDailyPlanUseCase({
     contextPort: deps.contextPort,
     persistencePort: deps.persistencePort,
+    composer,
+    nowIso: deps.nowIso ?? (() => new Date().toISOString()),
+  });
+};
+
+export interface CreateGenerateCalendarProjectionUseCaseDeps {
+  contextPort: IPlanningContextPort;
+  projectionPersistencePort: ICalendarProjectionPersistencePort;
+
+  /**
+   * Clock injetável:
+   * - NÃO interfere no output do plano (somente auditoria do log).
+   */
+  nowIso?: () => string;
+}
+
+export const createGenerateCalendarProjectionUseCase = (
+  deps: CreateGenerateCalendarProjectionUseCaseDeps
+): GenerateCalendarProjectionUseCase => {
+  const composer = createDailyPlanComposer();
+
+  return new GenerateCalendarProjectionUseCase({
+    contextPort: deps.contextPort,
+    projectionPersistencePort: deps.projectionPersistencePort,
     composer,
     nowIso: deps.nowIso ?? (() => new Date().toISOString()),
   });
