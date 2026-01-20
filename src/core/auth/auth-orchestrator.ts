@@ -37,7 +37,7 @@ export class AuthOrchestrator {
 
     if (res.ok) {
       await this.safeAuditLog({
-        userId: res.data.user.id,
+        userId: res.data.user.getId(),
         eventType: 'login_success',
         context: params.context,
         metadata: { result: 'ok' },
@@ -59,7 +59,7 @@ export class AuthOrchestrator {
     const res = await this.deps.signUpUC.execute({ email: params.email, password: params.password });
 
     await this.safeAuditLog({
-      userId: res.ok ? res.data.user.id : null,
+      userId: res.ok ? res.data.user.getId() : null,
       eventType: 'signup',
       context: params.context,
       metadata: { result: res.ok ? 'ok' : 'error', ...(res.ok ? {} : { code: res.error.code }) },
@@ -73,7 +73,7 @@ export class AuthOrchestrator {
 
     if (res.ok) {
       const current = await this.deps.authRepo.getCurrentUser().catch(() => ({ ok: true, data: null } as const));
-      const userId = current.ok && current.data ? current.data.id : null;
+      const userId = current.ok && current.data ? current.data.getId() : null;
 
       await this.safeAuditLog({
         userId,
@@ -113,7 +113,7 @@ export class AuthOrchestrator {
 
     if (res.ok) {
       const current = await this.deps.authRepo.getCurrentUser().catch(() => ({ ok: true, data: null } as const));
-      const userId = current.ok && current.data ? current.data.id : null;
+      const userId = current.ok && current.data ? current.data.getId() : null;
 
       await this.safeAuditLog({
         userId,
@@ -137,7 +137,7 @@ export class AuthOrchestrator {
 
   async logout(params: { context?: AuthAuditLogContext }): Promise<Result<null, 'UNEXPECTED'>> {
     const current = await this.deps.authRepo.getCurrentUser().catch(() => ({ ok: true, data: null } as const));
-    const userId = current.ok && current.data ? current.data.id : null;
+    const userId = current.ok && current.data ? current.data.getId() : null;
 
     const res = await this.deps.authRepo.logout();
 
