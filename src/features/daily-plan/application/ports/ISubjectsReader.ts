@@ -1,12 +1,19 @@
 // src/features/daily-plan/application/ports/ISubjectsReader.ts
 
-import type { Subject } from "@/features/subjects"; // via Public API da feature subjects
+import type { SubjectTheoryDTO } from '../dtos/PlanTypes';
 
 /**
  * Leitura das matérias ativas (Fase 2) para planejamento.
- * Regras relevantes: teoria vs extras; limite de matérias/dia conta só teoria. :contentReference[oaicite:9]{index=9} :contentReference[oaicite:10]{index=10}
+ *
+ * IMPORTANTÍSSIMO (Governança):
+ * - Esta interface NÃO pode importar a feature de Fase 2 diretamente.
+ * - A integração com a Fase 2 será feita via adapter na infra/composition root.
+ * - Assim, a Fase 3 permanece buildável e a Fase 2 pode ser implementada depois sem quebrar o motor.
  */
 export interface ISubjectsReader {
-  /** Lista de matérias ativas e elegíveis para teoria/planejamento. */
-  listActiveSubjects(): Promise<Subject[]>;
+  /**
+   * Lista de matérias ativas e elegíveis para teoria/planejamento.
+   * Retorna o "read model" mínimo necessário para o motor (sem acoplamento em entidade da Fase 2).
+   */
+  listActiveSubjects(params: { userId: string }): Promise<SubjectTheoryDTO[]>;
 }
