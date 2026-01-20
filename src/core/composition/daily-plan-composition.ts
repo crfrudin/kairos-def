@@ -16,6 +16,9 @@ import { GenerateCalendarProjectionUseCase } from '@/features/daily-plan/applica
 import type { IExecutionPersistencePort } from '@/features/daily-plan/application/ports/IExecutionPersistencePort';
 import { ExecuteDayUseCase } from '@/features/daily-plan/application/use-cases/ExecuteDay';
 
+import type { IDailyPlanReadPort } from '@/features/daily-plan/application/ports/IDailyPlanReadPort';
+import { GetDailyPlanUseCase } from '@/features/daily-plan/application/use-cases/GetDailyPlan';
+
 export const createDailyPlanComposer = (): DailyPlanComposer => {
   const restDayEvaluator = new RestDayEvaluator();
   const reviewAllocator = new ReviewAllocator();
@@ -100,5 +103,15 @@ export const createExecuteDayUseCase = (deps: CreateExecuteDayUseCaseDeps): Exec
     contextPort: deps.contextPort,
     executionPersistencePort: deps.executionPersistencePort,
     nowIso: deps.nowIso ?? (() => new Date().toISOString()),
+  });
+};
+
+export interface CreateGetDailyPlanUseCaseDeps {
+  readPort: IDailyPlanReadPort;
+}
+
+export const createGetDailyPlanUseCase = (deps: CreateGetDailyPlanUseCaseDeps): GetDailyPlanUseCase => {
+  return new GetDailyPlanUseCase({
+    readPort: deps.readPort,
   });
 };

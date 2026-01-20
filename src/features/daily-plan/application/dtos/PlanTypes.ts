@@ -2,7 +2,7 @@ export type StudyType = 'THEORY' | 'QUESTIONS' | 'INFORMATIVES' | 'LEI_SECA' | '
 
 export type StudyMode = 'FIXO' | 'CICLO';
 
-export type DayPlanStatus = 'REST_DAY' | 'PLANNED';
+export type DayPlanStatus = 'REST_DAY' | 'PLANNED' | 'EXECUTED';
 
 export type ReviewFrequencyDays = 1 | 7 | 30;
 

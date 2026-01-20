@@ -4,7 +4,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/features/auth/infra/ssr/createSupabaseServerClient';
 
 import type { DailyPlanDTO, DailyPlanItemDTO } from '@/features/daily-plan/application/dtos/DailyPlanDTO';
-import type { IDailyPlanPersistencePort, PlanGenerationLogEntry } from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
+import type {
+  IDailyPlanPersistencePort,
+  PlanGenerationLogEntry,
+} from '@/features/daily-plan/application/ports/IDailyPlanPersistencePort';
 
 type DbDailyPlansRow = {
   user_id: string;
@@ -56,6 +59,12 @@ function assertMinutesPositive(n: number, label: string): void {
   }
 }
 
+function normalizeMeta(meta: unknown): Record<string, unknown> {
+  if (meta == null) return {};
+  if (typeof meta !== 'object' || Array.isArray(meta)) return {};
+  return meta as Record<string, unknown>;
+}
+
 export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistencePort {
   private async getClient(): Promise<SupabaseClient> {
     return createSupabaseServerClient() as unknown as SupabaseClient;
@@ -81,9 +90,7 @@ export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistenc
       },
     };
 
-    const upsertPlan = await client
-      .from('daily_plans')
-      .upsert(dailyPlanRow, { onConflict: 'user_id,plan_date' });
+    const upsertPlan = await client.from('daily_plans').upsert(dailyPlanRow, { onConflict: 'user_id,plan_date' });
 
     if (upsertPlan.error) {
       throw new Error(`DB_UPSERT_DAILY_PLANS_FAILED: ${upsertPlan.error.message}`);
@@ -91,11 +98,7 @@ export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistenc
 
     // 2) Substituição integral de itens do dia (determinística):
     // deleta todos e reinsere ordenado.
-    const del = await client
-      .from('daily_plan_items')
-      .delete()
-      .eq('user_id', userId)
-      .eq('plan_date', plan.date);
+    const del = await client.from('daily_plan_items').delete().eq('user_id', userId).eq('plan_date', plan.date);
 
     if (del.error) {
       throw new Error(`DB_DELETE_DAILY_PLAN_ITEMS_FAILED: ${del.error.message}`);
@@ -104,8 +107,15 @@ export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistenc
     const inserts: DbDailyPlanItemsInsert[] = plan.items.map((it, idx) => {
       assertMinutesPositive(it.minutes, `item.minutes[${idx}]`);
 
-      const meta = (it.metadata ?? {}) as Record<string, unknown>;
-      const subjectId = (meta.subjectId ?? null) as string | null;
+      const baseMeta = normalizeMeta(it.metadata);
+      const subjectId = (baseMeta.subjectId ?? null) as string | null;
+
+      // ✅ Persistimos o title dentro do meta (DDL já prevê meta jsonb)
+      // Isso permite UC-05 (read) reconstruir o DTO fielmente.
+      const meta: Record<string, unknown> = {
+        ...baseMeta,
+        title: it.title,
+      };
 
       return {
         user_id: userId,
@@ -157,6 +167,8 @@ export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistenc
    * - Este método só será implementado após identificarmos a persistência oficial do cursor.
    */
   public async updateCycleCursor(_params: { userId: string; nextCursor: number }): Promise<void> {
-    throw new Error('CYCLE_CURSOR_STORAGE_NOT_DEFINED: não existe persistência oficial identificada para cursor do CICLO (FASE 3).');
+    throw new Error(
+      'CYCLE_CURSOR_STORAGE_NOT_DEFINED: não existe persistência oficial identificada para cursor do CICLO (FASE 3).'
+    );
   }
 }
