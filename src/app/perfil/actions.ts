@@ -36,23 +36,59 @@ function safeString(v: FormDataEntryValue | null): string {
   return '';
 }
 
+function stringifyIssue(x: unknown): string {
+  if (typeof x === 'string') return x;
+  if (x && typeof x === 'object') {
+    // tenta formatos comuns: { code, message } ou similares
+    const anyX = x as Record<string, unknown>;
+    const code = typeof anyX.code === 'string' ? anyX.code : null;
+    const message = typeof anyX.message === 'string' ? anyX.message : null;
+
+    if (code && message) return `${code}: ${message}`;
+    if (message) return message;
+    if (code) return code;
+
+    try {
+      return JSON.stringify(x);
+    } catch {
+      return 'UNKNOWN_ISSUE_OBJECT';
+    }
+  }
+  return String(x);
+}
+
+function extractBlockingArray(err: unknown): unknown[] | null {
+  // ProfileValidationError provavelmente carrega o array no construtor;
+  // extraímos de forma defensiva (sem acoplar a propriedade exata).
+  const anyErr = err as any;
+  if (Array.isArray(anyErr?.blocking)) return anyErr.blocking;
+  if (Array.isArray(anyErr?.errors)) return anyErr.errors;
+  if (Array.isArray(anyErr?.issues)) return anyErr.issues;
+  return null;
+}
+
 function toBlockingErrors(err: unknown): string[] {
+  if (err instanceof ProfileApplyConfirmationRequiredError) {
+    return ['CONFIRM_APPLY_REQUIRED'];
+  }
+
   if (err instanceof ProfileValidationError) {
-    // Tentamos extrair de forma defensiva (sem depender de propriedade privada)
-    const anyErr = err as unknown as { blocking?: unknown };
-    const blocking = anyErr?.blocking;
-    if (Array.isArray(blocking)) return blocking.map((x) => String(x));
+    const arr = extractBlockingArray(err);
+    if (arr && arr.length > 0) return arr.map(stringifyIssue);
     return ['PROFILE_VALIDATION_ERROR'];
   }
 
-  if (err instanceof ProfileApplyConfirmationRequiredError) {
-    return ['CONFIRM_APPLY_REQUIRED'];
+  if (err instanceof Error) {
+    // Evita “vazar” stack; devolve marcador + message curta
+    return [`UNEXPECTED_ERROR: ${err.message}`];
   }
 
   return ['UNEXPECTED_ERROR'];
 }
 
-export async function loadProfileAction(): Promise<{ ok: true; contract: ProfileContract | null } | { ok: false; error: string }> {
+export async function loadProfileAction(): Promise<
+  { ok: true; contract: ProfileContract | null } | { ok: false; error: string }
+> {
   try {
     const userId = await requireAuthenticatedUserId();
     const { getProfile } = createProfileUseCases({ userId });

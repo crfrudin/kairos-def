@@ -115,18 +115,23 @@ function clampInt(v: string, fallback: number): number {
   return n;
 }
 
+function makeClientUuid(): string {
+  // Não é regra de negócio; é apenas geração de id para o payload completo.
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  // fallback raríssimo; mantém funcionalidade em ambientes sem crypto.randomUUID
+  return `rp_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+}
+
 export function ProfileEditShell(props: { initialContractJson: string; authStatusMessage?: string }) {
   const [contractJson, setContractJson] = React.useState(props.initialContractJson);
   const parsed = React.useMemo(() => tryParseContract(contractJson), [contractJson]);
 
   const hasContract = parsed.ok;
 
-  // Mantém um snapshot de objeto apenas quando o JSON for válido.
   const [contractObj, setContractObj] = React.useState<ProfileContract | null>(hasContract ? parsed.contract : null);
 
   React.useEffect(() => {
     if (parsed.ok) setContractObj(parsed.contract);
-    // se JSON ficou inválido, não destruímos o último objeto (pra não “sumir” o form), mas o submit usará o JSON atual.
   }, [parsed]);
 
   const defaultTab = props.initialContractJson.trim() ? 'form' : 'json';
@@ -144,7 +149,6 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
         : null;
 
   function syncFromObj(next: ProfileContract) {
-    // Regra: UI não cria defaults normativos. Aqui só refletimos alterações explícitas do usuário.
     setContractObj(next);
     setContractJson(pretty(next));
   }
@@ -186,6 +190,37 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
     syncFromObj({
       ...contractObj,
       autoReviewPolicy: { ...contractObj.autoReviewPolicy, ...patch },
+    });
+  }
+
+  function addRestPeriod() {
+    if (!contractObj) return;
+
+    const id = makeClientUuid();
+
+    // Sem defaults normativos: datas começam vazias; backend valida/rejeita.
+    const next = {
+      ...contractObj,
+      restPeriods: [
+        ...contractObj.restPeriods,
+        {
+          id,
+          userId: contractObj.rules.userId,
+          startDate: '',
+          endDate: '',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    syncFromObj(next);
+  }
+
+  function removeRestPeriod(id: string) {
+    if (!contractObj) return;
+    syncFromObj({
+      ...contractObj,
+      restPeriods: contractObj.restPeriods.filter((p) => p.id !== id),
     });
   }
 
@@ -271,65 +306,73 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
                     <CardTitle className="text-base">Semana (horário + tipos)</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {(contractObj?.weekdayRules ?? []).slice().sort((a, b) => a.weekday - b.weekday).map((r) => (
-                      <div key={r.weekday} className="rounded-xl border p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="font-medium">{weekdayLabel(r.weekday)}</div>
+                    {(contractObj?.weekdayRules ?? []).slice().sort((a, b) => a.weekday - b.weekday).map((r) => {
+                      const disableTypes = r.dailyMinutes === 0;
 
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs">Minutos do dia</Label>
-                            <Input
-                              className="w-28"
-                              type="number"
-                              min={0}
-                              max={1440}
-                              value={r.dailyMinutes}
-                              onChange={(e) => updateWeekdayRule(r.weekday, { dailyMinutes: clampInt(e.target.value, r.dailyMinutes) })}
-                            />
+                      return (
+                        <div key={r.weekday} className="rounded-xl border p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="font-medium">{weekdayLabel(r.weekday)}</div>
+
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Minutos do dia</Label>
+                              <Input
+                                className="w-28"
+                                type="number"
+                                min={0}
+                                max={1440}
+                                value={r.dailyMinutes}
+                                onChange={(e) => updateWeekdayRule(r.weekday, { dailyMinutes: clampInt(e.target.value, r.dailyMinutes) })}
+                              />
+                            </div>
+                          </div>
+
+                          {disableTypes ? (
+                            <p className="text-xs text-muted-foreground">
+                              UX: tipos desabilitados quando minutos = 0. (O backend também rejeita estados inválidos.)
+                            </p>
+                          ) : null}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                disabled={disableTypes}
+                                checked={disableTypes ? false : r.hasTheory}
+                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasTheory: Boolean(v) })}
+                              />
+                              Teoria
+                            </label>
+
+                            <label className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                disabled={disableTypes}
+                                checked={disableTypes ? false : r.hasQuestions}
+                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasQuestions: Boolean(v) })}
+                              />
+                              Questões
+                            </label>
+
+                            <label className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                disabled={disableTypes}
+                                checked={disableTypes ? false : r.hasInformatives}
+                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasInformatives: Boolean(v) })}
+                              />
+                              Informativos
+                            </label>
+
+                            <label className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                disabled={disableTypes}
+                                checked={disableTypes ? false : r.hasLeiSeca}
+                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasLeiSeca: Boolean(v) })}
+                              />
+                              Lei Seca
+                            </label>
                           </div>
                         </div>
-
-                        {r.dailyMinutes === 0 ? (
-                          <p className="text-xs text-muted-foreground">
-                            Observação: quando minutos = 0, o backend exige todos os tipos desmarcados.
-                          </p>
-                        ) : null}
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <label className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={r.hasTheory}
-                              onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasTheory: Boolean(v) })}
-                            />
-                            Teoria
-                          </label>
-
-                          <label className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={r.hasQuestions}
-                              onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasQuestions: Boolean(v) })}
-                            />
-                            Questões
-                          </label>
-
-                          <label className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={r.hasInformatives}
-                              onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasInformatives: Boolean(v) })}
-                            />
-                            Informativos
-                          </label>
-
-                          <label className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={r.hasLeiSeca}
-                              onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasLeiSeca: Boolean(v) })}
-                            />
-                            Lei Seca
-                          </label>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </CardContent>
                 </Card>
 
@@ -437,20 +480,31 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
                   </CardContent>
                 </Card>
 
-                {/* Descansos (somente editar existentes; sem add/remove neste bloco) */}
+                {/* Descansos (add/remove permitido neste bloco) */}
                 <Card className="rounded-2xl">
                   <CardHeader>
-                    <CardTitle className="text-base">Períodos de descanso (existentes)</CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle className="text-base">Períodos de descanso</CardTitle>
+                      <Button type="button" onClick={addRestPeriod}>
+                        Adicionar
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {(contractObj?.restPeriods ?? []).length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        Nenhum período cadastrado. Para criar o primeiro, use o modo JSON neste momento.
+                        Nenhum período cadastrado.
                       </p>
                     ) : (
                       (contractObj?.restPeriods ?? []).map((p) => (
                         <div key={p.id} className="rounded-xl border p-4 space-y-3">
-                          <div className="text-xs text-muted-foreground break-all">id: {p.id}</div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-xs text-muted-foreground break-all">id: {p.id}</div>
+                            <Button type="button" onClick={() => removeRestPeriod(p.id)}>
+                              Remover
+                            </Button>
+                          </div>
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label>Início</Label>
@@ -469,6 +523,10 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
                               />
                             </div>
                           </div>
+
+                          <p className="text-xs text-muted-foreground">
+                            Observação: datas vazias/ inválidas serão rejeitadas pelo backend.
+                          </p>
                         </div>
                       ))
                     )}
@@ -549,6 +607,52 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
             </form>
           </TabsContent>
         </Tabs>
+
+        {/* Submit (único) fica no JSON tab por enquanto:
+            - regra: nada de autosave.
+            - formulário apenas edita o JSON que será enviado. */}
+        <div className="mt-6">
+          <form action={formAction} className="space-y-4">
+            <input type="hidden" name="contract_json" value={contractJson} />
+
+            <div className="flex items-center gap-2">
+              <Checkbox id="confirm_apply_footer" name="confirm_apply" />
+              <Label htmlFor="confirm_apply_footer">Confirmo aplicar integralmente estas alterações</Label>
+            </div>
+
+            {blockingErrors.length > 0 ? (
+              <Alert>
+                <div className="text-sm font-medium">Erros bloqueantes</div>
+                <ul className="text-sm list-disc pl-5 mt-2">
+                  {blockingErrors.map((e, idx) => (
+                    <li key={`${e}-${idx}`}>{e}</li>
+                  ))}
+                </ul>
+              </Alert>
+            ) : null}
+
+            {informativeIssues.length > 0 ? (
+              <Alert>
+                <div className="text-sm font-medium">Avisos informativos</div>
+                <ul className="text-sm list-disc pl-5 mt-2">
+                  {informativeIssues.map((e, idx) => (
+                    <li key={idx}>{typeof e === 'string' ? e : JSON.stringify(e)}</li>
+                  ))}
+                </ul>
+              </Alert>
+            ) : null}
+
+            {state.message ? <p className="text-sm">{state.message}</p> : null}
+
+            <Button type="submit" disabled={isPending}>
+              {isPending ? 'Salvando...' : 'Salvar Perfil (submissão única)'}
+            </Button>
+
+            <p className="text-xs text-muted-foreground">
+              Nota: o botão acima é o único commit de persistência. O formulário só altera o JSON local.
+            </p>
+          </form>
+        </div>
       </CardContent>
     </Card>
   );
