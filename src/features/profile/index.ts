@@ -5,7 +5,6 @@ import { getPgPool } from '@/features/profile/infra/db/pgPool';
 import { PgProfileTransaction } from '@/features/profile/infra/transactions/PgProfileTransaction';
 import { GetProfileUseCase } from '@/features/profile/application/use-cases/GetProfileUseCase';
 import { UpdateProfileUseCase } from '@/features/profile/application/use-cases/UpdateProfileUseCase';
-import { PgProfileRepository } from '@/features/profile/infra/repositories/PgProfileRepository';
 
 import type { Pool } from 'pg';
 import type { IProfileRepository } from '@/features/profile/application/ports/IProfileRepository';
