@@ -14,12 +14,20 @@ export type InformativeFollowDTO = {
   lastReadNumber: number;
   isActive: boolean;
 
-  // ⚠️ Campos “derivados” só existem se o backend fornecer.
-  // Hoje, seu domínio/UCs não expõem latest/unread/status.
-  // Mantemos no DTO como opcionais para a UI não inventar nada.
-  latestAvailableNumber?: number;
-  unreadCount?: number;
-  status?: "EM_DIA" | "NOVOS";
+  latestAvailableNumber?: number | null;
+  unreadCount?: number | null;
+  status?: "EM_DIA" | "NOVOS" | null;
+};
+
+export type InformativeExtraFollowDTO = {
+  // STJ extraordinário (V2)
+  tribunal: "STJ";
+  lastReadNumber: number;
+  isActive: boolean;
+
+  latestAvailableNumber?: number | null;
+  unreadCount?: number | null;
+  status?: "EM_DIA" | "NOVOS" | null;
 };
 
 export type ResultOk<T> = { ok: true; data: T };
@@ -35,8 +43,7 @@ function fail(message: string): ResultErr {
   return { ok: false, errorMessage: message };
 }
 
-function mapFollowLikeToDto(x: any): InformativeFollowDTO | null {
-  // Aceita tanto formatos de repo (InformativeFollowRow) quanto DTOs já prontos.
+function mapFollowComputedToDto(x: any): InformativeFollowDTO | null {
   const tribunal = x?.tribunal;
   const lastReadNumber = x?.lastReadNumber;
   const isActive = x?.isActive;
@@ -49,16 +56,38 @@ function mapFollowLikeToDto(x: any): InformativeFollowDTO | null {
     tribunal,
     lastReadNumber: Number(lastReadNumber),
     isActive,
+    latestAvailableNumber: x?.latestAvailableNumber ?? null,
+    unreadCount: x?.unreadCount ?? null,
+    status: x?.status ?? null,
   };
-
-  // opcionais (se existirem)
-  if (Number.isFinite(Number(x?.latestAvailableNumber))) dto.latestAvailableNumber = Number(x.latestAvailableNumber);
-  if (Number.isFinite(Number(x?.unreadCount))) dto.unreadCount = Number(x.unreadCount);
-  if (x?.status === "EM_DIA" || x?.status === "NOVOS") dto.status = x.status;
 
   return dto;
 }
 
+function mapExtraFollowComputedToDto(x: any): InformativeExtraFollowDTO | null {
+  const tribunal = x?.tribunal;
+  const lastReadNumber = x?.lastReadNumber;
+  const isActive = x?.isActive;
+
+  if (tribunal !== "STJ") return null;
+  if (!Number.isFinite(Number(lastReadNumber))) return null;
+  if (typeof isActive !== "boolean") return null;
+
+  const dto: InformativeExtraFollowDTO = {
+    tribunal: "STJ",
+    lastReadNumber: Number(lastReadNumber),
+    isActive,
+    latestAvailableNumber: x?.latestAvailableNumber ?? null,
+    unreadCount: x?.unreadCount ?? null,
+    status: x?.status ?? null,
+  };
+
+  return dto;
+}
+
+/**
+ * REGULAR (tabela atual: informative_follows + informative_latest_by_tribunal)
+ */
 export async function uc_i01_list(_userIdFromClient: string): Promise<Result<{ follows: InformativeFollowDTO[] }>> {
   const userId = await getAuthedUserIdFromHeaders();
   if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
@@ -68,17 +97,9 @@ export async function uc_i01_list(_userIdFromClient: string): Promise<Result<{ f
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
 
-  // Seja resiliente ao shape retornado pelo UC (items | follows | rows)
-  const anyVal: any = (res as any).value ?? (res as any).data ?? {};
-  const raw =
-    anyVal.follows ??
-    anyVal.items ??
-    anyVal.rows ??
-    anyVal.list ??
-    (Array.isArray(anyVal) ? anyVal : []);
-
+  const raw = (res as any).value?.items ?? [];
   const arr = Array.isArray(raw) ? raw : [];
-  const follows = arr.map(mapFollowLikeToDto).filter(Boolean) as InformativeFollowDTO[];
+  const follows = arr.map(mapFollowComputedToDto).filter(Boolean) as InformativeFollowDTO[];
 
   return { ok: true, data: { follows } };
 }
@@ -106,17 +127,7 @@ export async function uc_i02_add(
 
   revalidatePath("/informativos");
 
-  // Retorno “follow” sem inventar campos derivados
-  return {
-    ok: true,
-    data: {
-      follow: {
-        tribunal,
-        lastReadNumber,
-        isActive: true,
-      },
-    },
-  };
+  return { ok: true, data: { follow: { tribunal, lastReadNumber, isActive: true } } };
 }
 
 export async function uc_i03_mark_read_up_to(
@@ -142,16 +153,7 @@ export async function uc_i03_mark_read_up_to(
 
   revalidatePath("/informativos");
 
-  return {
-    ok: true,
-    data: {
-      follow: {
-        tribunal,
-        lastReadNumber: markUpToNumber,
-        isActive: true,
-      },
-    },
-  };
+  return { ok: true, data: { follow: { tribunal, lastReadNumber: markUpToNumber, isActive: true } } };
 }
 
 export async function uc_i04_remove(
@@ -172,10 +174,126 @@ export async function uc_i04_remove(
   return { ok: true, data: { removedTribunal: input.tribunal } };
 }
 
+/**
+ * EXTRA (STJ V2)
+ * OBS: esses use-cases ainda vamos plugar na composition na etapa seguinte.
+ */
+export async function uc_i01_list_extra(_userIdFromClient: string): Promise<Result<{ follows: InformativeExtraFollowDTO[] }>> {
+  const userId = await getAuthedUserIdFromHeaders();
+  if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
+
+  const { listInformativeExtraordinaryFollowsUseCase } = createSubjectsSsrComposition({ userId } as any);
+  if (!listInformativeExtraordinaryFollowsUseCase) return fail("Extraordinary use-case not wired yet.");
+
+  const res = await listInformativeExtraordinaryFollowsUseCase.execute({ userId });
+
+  if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
+
+  const raw = (res as any).value?.items ?? [];
+  const arr = Array.isArray(raw) ? raw : [];
+  const follows = arr.map(mapExtraFollowComputedToDto).filter(Boolean) as InformativeExtraFollowDTO[];
+
+  return { ok: true, data: { follows } };
+}
+
+export async function uc_i02_add_extra(
+  _userIdFromClient: string,
+  input: { lastReadNumber?: number }
+): Promise<Result<{ follow: InformativeExtraFollowDTO }>> {
+  const userId = await getAuthedUserIdFromHeaders();
+  if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
+
+  const lastReadNumber = input.lastReadNumber ?? 0;
+
+  const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId } as any);
+  if (!upsertInformativeExtraordinaryFollowUseCase) return fail("Extraordinary use-case not wired yet.");
+
+  const res = await upsertInformativeExtraordinaryFollowUseCase.execute({
+    userId,
+    tribunal: "STJ",
+    lastReadNumber,
+    isActive: true,
+  });
+
+  if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
+
+  revalidatePath("/informativos");
+
+  return { ok: true, data: { follow: { tribunal: "STJ", lastReadNumber, isActive: true } } };
+}
+
+export async function uc_i03_mark_read_up_to_extra(
+  _userIdFromClient: string,
+  input: { markUpToNumber: number }
+): Promise<Result<{ follow: InformativeExtraFollowDTO }>> {
+  const userId = await getAuthedUserIdFromHeaders();
+  if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
+
+  const markUpToNumber = input.markUpToNumber;
+
+  const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId } as any);
+  if (!upsertInformativeExtraordinaryFollowUseCase) return fail("Extraordinary use-case not wired yet.");
+
+  const res = await upsertInformativeExtraordinaryFollowUseCase.execute({
+    userId,
+    tribunal: "STJ",
+    lastReadNumber: markUpToNumber,
+    isActive: true,
+  });
+
+  if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
+
+  revalidatePath("/informativos");
+
+  return { ok: true, data: { follow: { tribunal: "STJ", lastReadNumber: markUpToNumber, isActive: true } } };
+}
+
+export async function uc_i04_remove_extra(_userIdFromClient: string): Promise<Result<{ removed: true }>> {
+  const userId = await getAuthedUserIdFromHeaders();
+  if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
+
+  const { deactivateInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId } as any);
+  if (!deactivateInformativeExtraordinaryFollowUseCase) return fail("Extraordinary use-case not wired yet.");
+
+  const res = await deactivateInformativeExtraordinaryFollowUseCase.execute({ userId, tribunal: "STJ" });
+
+  if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
+
+  revalidatePath("/informativos");
+
+  return { ok: true, data: { removed: true } };
+}
+
+/**
+ * Refresh (robô) — mantém como está: robô roda, depois list normal recarrega e preenche latestByTribunal.
+ * A UI do EXTRA será atualizada pelo list_extra (vamos plugar depois).
+ */
 export async function uc_i05_refresh_latest(
   _userIdFromClient: string,
-  _input?: { tribunals?: Tribunal[] }
+  input?: { tribunals?: Tribunal[] }
 ): Promise<Result<{ latestByTribunal: Record<Tribunal, number> }>> {
-  // Não existe UC-I05 exposto no composition atual.
-  return fail("UNIMPLEMENTED: UC-I05 (RefreshLatestInformativeNumbers) não está disponível no backend.");
+  const userId = await getAuthedUserIdFromHeaders();
+  if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
+
+  const { runInformativesRobot } = await import("@/features/informatives/robot/informativesRobot");
+  const r = await runInformativesRobot({ tribunals: input?.tribunals, debug: false });
+
+  if (!r.ok) return fail(`ROBOT_FAILED: ${(r as any).errorMessage ?? "Unknown error"}`);
+
+  const { listInformativeFollowsUseCase } = createSubjectsSsrComposition({ userId });
+  const res = await listInformativeFollowsUseCase.execute({ userId });
+  if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
+
+  const latestByTribunal: Record<Tribunal, number> = { STF: 0, STJ: 0, TST: 0, TSE: 0 };
+
+  for (const it of (res as any).value?.items ?? []) {
+    if (it && typeof it.latestAvailableNumber === "number" && typeof it.tribunal === "string") {
+      latestByTribunal[it.tribunal as Tribunal] = it.latestAvailableNumber;
+    }
+  }
+
+  revalidatePath("/informativos");
+  revalidatePath("/robo");
+
+  return { ok: true, data: { latestByTribunal } };
 }
