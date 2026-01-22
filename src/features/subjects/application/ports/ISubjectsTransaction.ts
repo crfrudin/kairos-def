@@ -7,11 +7,21 @@ import type { IInformativeFollowRepository } from "./IInformativeFollowRepositor
 import type { IStandaloneLawRepository } from "./IStandaloneLawRepository";
 import type { IInformativeLatestRepository } from "./IInformativeLatestRepository";
 
+import type { IInformativeExtraordinaryFollowRepository } from "./IInformativeExtraordinaryFollowRepository";
+import type { IInformativeLatestExtraordinaryRepository } from "./IInformativeLatestExtraordinaryRepository";
+
 export interface SubjectsTxContext {
   subjectRepo: ISubjectRepository;
   subjectPriorityOrderRepo: ISubjectPriorityOrderRepository;
+
+  // REGULAR
   informativeFollowRepo: IInformativeFollowRepository;
   informativeLatestRepo: IInformativeLatestRepository;
+
+  // EXTRA (STJ)
+  informativeExtraFollowRepo: IInformativeExtraordinaryFollowRepository;
+  informativeLatestExtraRepo: IInformativeLatestExtraordinaryRepository;
+
   standaloneLawRepo: IStandaloneLawRepository;
 }
 

@@ -52,7 +52,7 @@ function mapFollowComputedToDto(x: any): InformativeFollowDTO | null {
   if (!Number.isFinite(Number(lastReadNumber))) return null;
   if (typeof isActive !== "boolean") return null;
 
-  const dto: InformativeFollowDTO = {
+  return {
     tribunal,
     lastReadNumber: Number(lastReadNumber),
     isActive,
@@ -60,8 +60,6 @@ function mapFollowComputedToDto(x: any): InformativeFollowDTO | null {
     unreadCount: x?.unreadCount ?? null,
     status: x?.status ?? null,
   };
-
-  return dto;
 }
 
 function mapExtraFollowComputedToDto(x: any): InformativeExtraFollowDTO | null {
@@ -73,7 +71,7 @@ function mapExtraFollowComputedToDto(x: any): InformativeExtraFollowDTO | null {
   if (!Number.isFinite(Number(lastReadNumber))) return null;
   if (typeof isActive !== "boolean") return null;
 
-  const dto: InformativeExtraFollowDTO = {
+  return {
     tribunal: "STJ",
     lastReadNumber: Number(lastReadNumber),
     isActive,
@@ -81,12 +79,10 @@ function mapExtraFollowComputedToDto(x: any): InformativeExtraFollowDTO | null {
     unreadCount: x?.unreadCount ?? null,
     status: x?.status ?? null,
   };
-
-  return dto;
 }
 
 /**
- * REGULAR (tabela atual: informative_follows + informative_latest_by_tribunal)
+ * REGULAR (informative_follows + informative_latest_by_tribunal)
  */
 export async function uc_i01_list(_userIdFromClient: string): Promise<Result<{ follows: InformativeFollowDTO[] }>> {
   const userId = await getAuthedUserIdFromHeaders();
@@ -175,16 +171,13 @@ export async function uc_i04_remove(
 }
 
 /**
- * EXTRA (STJ V2)
- * OBS: esses use-cases ainda vamos plugar na composition na etapa seguinte.
+ * EXTRA (STJ V2) — informative_extraordinary_follows + informative_latest_extraordinary_by_tribunal
  */
 export async function uc_i01_list_extra(_userIdFromClient: string): Promise<Result<{ follows: InformativeExtraFollowDTO[] }>> {
   const userId = await getAuthedUserIdFromHeaders();
   if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
 
-  const { listInformativeExtraordinaryFollowsUseCase } = createSubjectsSsrComposition({ userId } as any);
-  if (!listInformativeExtraordinaryFollowsUseCase) return fail("Extraordinary use-case not wired yet.");
-
+  const { listInformativeExtraordinaryFollowsUseCase } = createSubjectsSsrComposition({ userId });
   const res = await listInformativeExtraordinaryFollowsUseCase.execute({ userId });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
@@ -205,8 +198,7 @@ export async function uc_i02_add_extra(
 
   const lastReadNumber = input.lastReadNumber ?? 0;
 
-  const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId } as any);
-  if (!upsertInformativeExtraordinaryFollowUseCase) return fail("Extraordinary use-case not wired yet.");
+  const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId });
 
   const res = await upsertInformativeExtraordinaryFollowUseCase.execute({
     userId,
@@ -231,8 +223,7 @@ export async function uc_i03_mark_read_up_to_extra(
 
   const markUpToNumber = input.markUpToNumber;
 
-  const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId } as any);
-  if (!upsertInformativeExtraordinaryFollowUseCase) return fail("Extraordinary use-case not wired yet.");
+  const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId });
 
   const res = await upsertInformativeExtraordinaryFollowUseCase.execute({
     userId,
@@ -252,8 +243,7 @@ export async function uc_i04_remove_extra(_userIdFromClient: string): Promise<Re
   const userId = await getAuthedUserIdFromHeaders();
   if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
 
-  const { deactivateInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId } as any);
-  if (!deactivateInformativeExtraordinaryFollowUseCase) return fail("Extraordinary use-case not wired yet.");
+  const { deactivateInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId });
 
   const res = await deactivateInformativeExtraordinaryFollowUseCase.execute({ userId, tribunal: "STJ" });
 
@@ -265,8 +255,7 @@ export async function uc_i04_remove_extra(_userIdFromClient: string): Promise<Re
 }
 
 /**
- * Refresh (robô) — mantém como está: robô roda, depois list normal recarrega e preenche latestByTribunal.
- * A UI do EXTRA será atualizada pelo list_extra (vamos plugar depois).
+ * Refresh (robô) — roda, e a UI recarrega REGULAR e EXTRA separadamente.
  */
 export async function uc_i05_refresh_latest(
   _userIdFromClient: string,

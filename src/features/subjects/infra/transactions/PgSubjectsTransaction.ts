@@ -10,6 +10,9 @@ import { PgInformativeFollowRepository } from "../repositories/PgInformativeFoll
 import { PgInformativeLatestRepository } from "../repositories/PgInformativeLatestRepository";
 import { PgStandaloneLawRepository } from "../repositories/PgStandaloneLawRepository";
 
+import { PgInformativeExtraordinaryFollowRepository } from "../repositories/PgInformativeExtraordinaryFollowRepository";
+import { PgInformativeLatestExtraordinaryRepository } from "../repositories/PgInformativeLatestExtraordinaryRepository";
+
 export interface PgRlsContext {
   userId: UUID;
 }
@@ -36,8 +39,15 @@ export class PgSubjectsTransaction implements ISubjectsTransaction {
       const ctx: SubjectsTxContext = {
         subjectRepo: new PgSubjectRepository(client),
         subjectPriorityOrderRepo: new PgSubjectPriorityOrderRepository(client),
+
+        // REGULAR
         informativeFollowRepo: new PgInformativeFollowRepository(client),
         informativeLatestRepo: new PgInformativeLatestRepository(client),
+
+        // EXTRA (STJ)
+        informativeExtraFollowRepo: new PgInformativeExtraordinaryFollowRepository(client),
+        informativeLatestExtraRepo: new PgInformativeLatestExtraordinaryRepository(client),
+
         standaloneLawRepo: new PgStandaloneLawRepository(client),
       };
 

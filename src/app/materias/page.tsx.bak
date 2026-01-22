@@ -2,7 +2,6 @@ import "server-only";
 
 import Link from "next/link";
 import { headers } from "next/headers";
-import type { UrlObject } from 'url'; // ← Adicionado para tipagem segura do href dinâmico
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -87,10 +86,7 @@ export default async function MateriasPage() {
                 items.map((it) => (
                   <TableRow key={it.id}>
                     <TableCell className="font-medium">
-                      <Link 
-                        className="underline underline-offset-4" 
-                        href={`/materias/${it.id}` as string | UrlObject}
-                      >
+                      <Link className="underline underline-offset-4" href={`/materias/${it.id}`}>
                         {it.name}
                       </Link>
                     </TableCell>
@@ -100,7 +96,7 @@ export default async function MateriasPage() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button asChild variant="outline" size="sm">
-                          <Link href={`/materias/${it.id}` as string | UrlObject}>Abrir</Link>
+                          <Link href={`/materias/${it.id}`}>Abrir</Link>
                         </Button>
 
                         <form
@@ -136,11 +132,11 @@ export default async function MateriasPage() {
           <div className="text-sm text-muted-foreground">
             Reordene e salve. A lista acima passa a refletir a prioridade salva.
           </div>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline">
-              <Link href="/materias/ordem">Abrir em tela cheia</Link>
-            </Button>
-          </div>
+<div className="flex items-center gap-2">
+  <Button asChild variant="outline">
+    <Link href="/materias/ordem">Abrir em tela cheia</Link>
+  </Button>
+  </div>
           <SubjectOrderEditor items={items} />
         </CardContent>
       </Card>

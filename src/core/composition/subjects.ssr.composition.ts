@@ -18,9 +18,15 @@ export interface SubjectsSsrComposition {
   softDeleteSubjectUseCase: ReturnType<typeof createSubjectsUseCases>["softDeleteSubjectUseCase"];
   replaceSubjectOrderUseCase: ReturnType<typeof createSubjectsUseCases>["replaceSubjectOrderUseCase"];
 
+  // REGULAR
   listInformativeFollowsUseCase: ReturnType<typeof createSubjectsUseCases>["listInformativeFollowsUseCase"];
   upsertInformativeFollowUseCase: ReturnType<typeof createSubjectsUseCases>["upsertInformativeFollowUseCase"];
   deactivateInformativeFollowUseCase: ReturnType<typeof createSubjectsUseCases>["deactivateInformativeFollowUseCase"];
+
+  // EXTRA (STJ)
+  listInformativeExtraordinaryFollowsUseCase: ReturnType<typeof createSubjectsUseCases>["listInformativeExtraordinaryFollowsUseCase"];
+  upsertInformativeExtraordinaryFollowUseCase: ReturnType<typeof createSubjectsUseCases>["upsertInformativeExtraordinaryFollowUseCase"];
+  deactivateInformativeExtraordinaryFollowUseCase: ReturnType<typeof createSubjectsUseCases>["deactivateInformativeExtraordinaryFollowUseCase"];
 }
 
 export function createSubjectsSsrComposition(params: { userId: UUID }): SubjectsSsrComposition {

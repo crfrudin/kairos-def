@@ -13,6 +13,10 @@ import { createListInformativeFollowsUseCase } from "@/features/subjects/applica
 import { createUpsertInformativeFollowUseCase } from "@/features/subjects/application/use-cases/UpsertInformativeFollow";
 import { createDeactivateInformativeFollowUseCase } from "@/features/subjects/application/use-cases/DeactivateInformativeFollow";
 
+import { createListInformativeExtraordinaryFollowsUseCase } from "@/features/subjects/application/use-cases/ListInformativeExtraordinaryFollows";
+import { createUpsertInformativeExtraordinaryFollowUseCase } from "@/features/subjects/application/use-cases/UpsertInformativeExtraordinaryFollow";
+import { createDeactivateInformativeExtraordinaryFollowUseCase } from "@/features/subjects/application/use-cases/DeactivateInformativeExtraordinaryFollow";
+
 export function createSubjectsUseCases(deps: { tx: ISubjectsTransaction }) {
   return {
     listSubjectsMinimalUseCase: createListSubjectsMinimalUseCase(deps),
@@ -22,8 +26,14 @@ export function createSubjectsUseCases(deps: { tx: ISubjectsTransaction }) {
     softDeleteSubjectUseCase: createSoftDeleteSubjectUseCase(deps),
     replaceSubjectOrderUseCase: createReplaceSubjectOrderUseCase(deps),
 
+    // REGULAR
     listInformativeFollowsUseCase: createListInformativeFollowsUseCase(deps),
     upsertInformativeFollowUseCase: createUpsertInformativeFollowUseCase(deps),
     deactivateInformativeFollowUseCase: createDeactivateInformativeFollowUseCase(deps),
+
+    // EXTRA (STJ)
+    listInformativeExtraordinaryFollowsUseCase: createListInformativeExtraordinaryFollowsUseCase(deps),
+    upsertInformativeExtraordinaryFollowUseCase: createUpsertInformativeExtraordinaryFollowUseCase(deps),
+    deactivateInformativeExtraordinaryFollowUseCase: createDeactivateInformativeExtraordinaryFollowUseCase(deps),
   };
 }
