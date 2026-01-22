@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { updateProfileAction } from '@/app/perfil/actions';
+import { updateProfileAction } from '@/app/(app)/perfil/actions';
 
 type ActionState =
   | { ok: true; informativeIssues: unknown[]; message?: string }

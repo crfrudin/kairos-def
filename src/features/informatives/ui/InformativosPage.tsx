@@ -53,7 +53,7 @@ import {
   uc_i05_refresh_latest,
   type InformativeFollowDTO,
   type InformativeExtraFollowDTO,
-} from "@/app/informativos/actions";
+} from "@/app/(app)/informativos/actions";
 
 type Tribunal = "STF" | "STJ" | "TST" | "TSE";
 
