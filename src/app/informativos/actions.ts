@@ -1,11 +1,7 @@
-// src/app/informativos/actions.ts
 "use server";
-
 import "server-only";
-
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-
 import { createSubjectsSsrComposition } from "@/core/composition/subjects.ssr.composition";
 import type { Tribunal } from "@/features/subjects/application/ports/IInformativeFollowRepository";
 
@@ -13,7 +9,6 @@ export type InformativeFollowDTO = {
   tribunal: Tribunal;
   lastReadNumber: number;
   isActive: boolean;
-
   latestAvailableNumber?: number | null;
   unreadCount?: number | null;
   status?: "EM_DIA" | "NOVOS" | null;
@@ -24,7 +19,6 @@ export type InformativeExtraFollowDTO = {
   tribunal: "STJ";
   lastReadNumber: number;
   isActive: boolean;
-
   latestAvailableNumber?: number | null;
   unreadCount?: number | null;
   status?: "EM_DIA" | "NOVOS" | null;
@@ -53,7 +47,7 @@ function mapFollowComputedToDto(x: any): InformativeFollowDTO | null {
   if (typeof isActive !== "boolean") return null;
 
   return {
-    tribunal,
+    tribunal: tribunal as Tribunal, // ← Correção: type assertion segura
     lastReadNumber: Number(lastReadNumber),
     isActive,
     latestAvailableNumber: x?.latestAvailableNumber ?? null,
@@ -90,7 +84,6 @@ export async function uc_i01_list(_userIdFromClient: string): Promise<Result<{ f
 
   const { listInformativeFollowsUseCase } = createSubjectsSsrComposition({ userId });
   const res = await listInformativeFollowsUseCase.execute({ userId });
-
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
 
   const raw = (res as any).value?.items ?? [];
@@ -111,7 +104,6 @@ export async function uc_i02_add(
   const lastReadNumber = input.lastReadNumber ?? 0;
 
   const { upsertInformativeFollowUseCase } = createSubjectsSsrComposition({ userId });
-
   const res = await upsertInformativeFollowUseCase.execute({
     userId,
     tribunal,
@@ -120,7 +112,6 @@ export async function uc_i02_add(
   });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
-
   revalidatePath("/informativos");
 
   return { ok: true, data: { follow: { tribunal, lastReadNumber, isActive: true } } };
@@ -137,7 +128,6 @@ export async function uc_i03_mark_read_up_to(
   const markUpToNumber = input.markUpToNumber;
 
   const { upsertInformativeFollowUseCase } = createSubjectsSsrComposition({ userId });
-
   const res = await upsertInformativeFollowUseCase.execute({
     userId,
     tribunal,
@@ -146,7 +136,6 @@ export async function uc_i03_mark_read_up_to(
   });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
-
   revalidatePath("/informativos");
 
   return { ok: true, data: { follow: { tribunal, lastReadNumber: markUpToNumber, isActive: true } } };
@@ -160,11 +149,9 @@ export async function uc_i04_remove(
   if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
 
   const { deactivateInformativeFollowUseCase } = createSubjectsSsrComposition({ userId });
-
   const res = await deactivateInformativeFollowUseCase.execute({ userId, tribunal: input.tribunal });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
-
   revalidatePath("/informativos");
 
   return { ok: true, data: { removedTribunal: input.tribunal } };
@@ -179,7 +166,6 @@ export async function uc_i01_list_extra(_userIdFromClient: string): Promise<Resu
 
   const { listInformativeExtraordinaryFollowsUseCase } = createSubjectsSsrComposition({ userId });
   const res = await listInformativeExtraordinaryFollowsUseCase.execute({ userId });
-
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
 
   const raw = (res as any).value?.items ?? [];
@@ -199,7 +185,6 @@ export async function uc_i02_add_extra(
   const lastReadNumber = input.lastReadNumber ?? 0;
 
   const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId });
-
   const res = await upsertInformativeExtraordinaryFollowUseCase.execute({
     userId,
     tribunal: "STJ",
@@ -208,7 +193,6 @@ export async function uc_i02_add_extra(
   });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
-
   revalidatePath("/informativos");
 
   return { ok: true, data: { follow: { tribunal: "STJ", lastReadNumber, isActive: true } } };
@@ -224,7 +208,6 @@ export async function uc_i03_mark_read_up_to_extra(
   const markUpToNumber = input.markUpToNumber;
 
   const { upsertInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId });
-
   const res = await upsertInformativeExtraordinaryFollowUseCase.execute({
     userId,
     tribunal: "STJ",
@@ -233,7 +216,6 @@ export async function uc_i03_mark_read_up_to_extra(
   });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
-
   revalidatePath("/informativos");
 
   return { ok: true, data: { follow: { tribunal: "STJ", lastReadNumber: markUpToNumber, isActive: true } } };
@@ -244,11 +226,9 @@ export async function uc_i04_remove_extra(_userIdFromClient: string): Promise<Re
   if (!userId) return fail("Missing authenticated user claim (x-kairos-user-id).");
 
   const { deactivateInformativeExtraordinaryFollowUseCase } = createSubjectsSsrComposition({ userId });
-
   const res = await deactivateInformativeExtraordinaryFollowUseCase.execute({ userId, tribunal: "STJ" });
 
   if (!res.ok) return fail(`${res.error.code}: ${res.error.message}`);
-
   revalidatePath("/informativos");
 
   return { ok: true, data: { removed: true } };
@@ -266,7 +246,6 @@ export async function uc_i05_refresh_latest(
 
   const { runInformativesRobot } = await import("@/features/informatives/robot/informativesRobot");
   const r = await runInformativesRobot({ tribunals: input?.tribunals, debug: false });
-
   if (!r.ok) return fail(`ROBOT_FAILED: ${(r as any).errorMessage ?? "Unknown error"}`);
 
   const { listInformativeFollowsUseCase } = createSubjectsSsrComposition({ userId });
