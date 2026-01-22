@@ -60,11 +60,11 @@ async function insertRunOrSkip(client: PoolClient, runDay: string) {
        returning id`,
       [runDay, JSON.stringify({ runDay, stage: "STARTED" })]
     );
-    return { inserted: true, runId: String(r.rows[0].id) } as const;
+    return { inserted: true as const, runId: String(r.rows[0].id) };
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     if (msg.toLowerCase().includes("informative_robot_runs_unique_day") || msg.toLowerCase().includes("duplicate key")) {
-      return { inserted: false, runId: null } as const;
+      return { inserted: false as const, runId: null as const };
     }
     throw e;
   }
