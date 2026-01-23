@@ -108,7 +108,13 @@ export async function updateProfileAction(_prev: ActionState, formData: FormData
     const { updateProfile } = createProfileUseCases({ userId });
 
     const rawJson = safeString(formData.get('contract_json'));
-    const confirmApply = formData.get('confirm_apply') === 'on';
+    const confirmApplyRaw = formData.get('confirm_apply');
+const confirmApply =
+  confirmApplyRaw === 'on' ||
+  confirmApplyRaw === 'true' ||
+  confirmApplyRaw === '1' ||
+  confirmApplyRaw === 'yes';
+
 
     if (!rawJson.trim()) {
       return {

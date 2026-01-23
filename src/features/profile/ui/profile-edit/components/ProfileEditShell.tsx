@@ -1,14 +1,13 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -18,6 +17,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Calendar } from '@/components/ui/calendar';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { updateProfileAction } from '@/app/(app)/perfil/actions';
 
@@ -78,12 +82,37 @@ type ProfileContract = {
   }>;
 };
 
+function HelpTip(props: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="Ajuda"
+          className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] leading-none text-muted-foreground hover:bg-muted"
+        >
+          ?
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[340px]">
+        <p className="text-sm">{props.text}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function tryParseContract(raw: string): { ok: true; contract: ProfileContract } | { ok: false; error: string } {
   if (!raw.trim()) return { ok: false, error: 'EMPTY' };
   try {
     const obj = JSON.parse(raw) as ProfileContract;
     if (!obj || typeof obj !== 'object') return { ok: false, error: 'NOT_OBJECT' };
-    if (!obj.rules || !Array.isArray(obj.weekdayRules) || !obj.extrasDurations || !obj.autoReviewPolicy || !Array.isArray(obj.restPeriods)) {
+    if (
+      !obj.rules ||
+      !Array.isArray(obj.weekdayRules) ||
+      !obj.extrasDurations ||
+      !obj.autoReviewPolicy ||
+      !Array.isArray(obj.restPeriods)
+    ) {
       return { ok: false, error: 'MISSING_KEYS' };
     }
     return { ok: true, contract: obj };
@@ -98,11 +127,11 @@ function pretty(obj: unknown): string {
 
 function weekdayLabel(n: number): string {
   switch (n) {
-    case 1: return 'Segunda';
-    case 2: return 'Terça';
-    case 3: return 'Quarta';
-    case 4: return 'Quinta';
-    case 5: return 'Sexta';
+    case 1: return 'Segunda-feira';
+    case 2: return 'Terça-feira';
+    case 3: return 'Quarta-feira';
+    case 4: return 'Quinta-feira';
+    case 5: return 'Sexta-feira';
     case 6: return 'Sábado';
     case 7: return 'Domingo';
     default: return `Dia ${n}`;
@@ -115,6 +144,59 @@ function clampInt(v: string, fallback: number): number {
   return n;
 }
 
+function minutesToHHMM(totalMinutes: number): string {
+  const m = Math.max(0, Math.min(1440, totalMinutes));
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function tryHHMMToMinutes(input: string): { ok: true; minutes: number } | { ok: false } {
+  const s = input.trim();
+  // permite 0..24:00; minutos 00..59; 24 só permitido com :00
+  const match = /^(\d{1,2}):([0-5]\d)$/.exec(s);
+  if (!match) return { ok: false };
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return { ok: false };
+  if (hh < 0 || hh > 24) return { ok: false };
+  if (hh === 24 && mm !== 0) return { ok: false };
+  const minutes = hh * 60 + mm;
+  if (minutes < 0 || minutes > 1440) return { ok: false };
+  return { ok: true, minutes };
+}
+
+function isoDateSaoPaulo(d: Date): string {
+  // YYYY-MM-DD na timezone do produto
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return dtf.format(d);
+}
+
+function isoToBR(value: string): string {
+  if (!value) return '';
+
+  // 1) Preferência: YYYY-MM-DD (ou YYYY-MM-DDTHH...)
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (m) {
+    const [, yyyy, mm, dd] = m;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  // 2) Fallback: Date string parseável (ex.: "Sun Jan 25 2026 ...")
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(d);
+  }
+
+  // 3) Último recurso: devolve como veio
+  return value;
+}
+
 function makeClientUuid(): string {
   // Não é regra de negócio; é apenas geração de id para o payload completo.
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -122,10 +204,22 @@ function makeClientUuid(): string {
   return `rp_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 }
 
+type StudyTypeKey = 'THEORY' | 'QUESTIONS' | 'INFORMATIVES' | 'LEI_SECA';
+
+function selectedTypesFromRule(r: ProfileContract['weekdayRules'][number]): StudyTypeKey[] {
+  const selected: StudyTypeKey[] = [];
+  if (r.hasTheory) selected.push('THEORY');
+  if (r.hasQuestions) selected.push('QUESTIONS');
+  if (r.hasInformatives) selected.push('INFORMATIVES');
+  if (r.hasLeiSeca) selected.push('LEI_SECA');
+  return selected;
+}
+
 export function ProfileEditShell(props: { initialContractJson: string; authStatusMessage?: string }) {
+  const router = useRouter();
+
   const [contractJson, setContractJson] = React.useState(props.initialContractJson);
   const parsed = React.useMemo(() => tryParseContract(contractJson), [contractJson]);
-
   const hasContract = parsed.ok;
 
   const [contractObj, setContractObj] = React.useState<ProfileContract | null>(hasContract ? parsed.contract : null);
@@ -134,18 +228,17 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
     if (parsed.ok) setContractObj(parsed.contract);
   }, [parsed]);
 
-  const defaultTab = props.initialContractJson.trim() ? 'form' : 'json';
-
   const [state, formAction, isPending] = React.useActionState(updateProfileAction, initialState);
 
   const blockingErrors = state.ok ? [] : state.blockingErrors ?? [];
   const informativeIssues = state.informativeIssues ?? [];
 
+  // UI ONLY: agora não expomos mais JSON como modo. Mantemos a validação defensiva.
   const formDisabledReason =
     !props.initialContractJson.trim()
-      ? 'Sem perfil ainda. Crie o primeiro contrato pelo modo JSON.'
+      ? 'Perfil ainda não carregado.'
       : !hasContract
-        ? 'JSON inválido. Corrija o JSON para habilitar o formulário.'
+        ? 'Não foi possível interpretar o contrato do perfil.'
         : null;
 
   function syncFromObj(next: ProfileContract) {
@@ -193,12 +286,11 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
     });
   }
 
-  function addRestPeriod() {
+  function addRestPeriodWithDates(startDate: string, endDate: string) {
     if (!contractObj) return;
 
     const id = makeClientUuid();
 
-    // Sem defaults normativos: datas começam vazias; backend valida/rejeita.
     const next = {
       ...contractObj,
       restPeriods: [
@@ -206,8 +298,8 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
         {
           id,
           userId: contractObj.rules.userId,
-          startDate: '',
-          endDate: '',
+          startDate,
+          endDate,
           createdAt: new Date().toISOString(),
         },
       ],
@@ -224,217 +316,343 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
     });
   }
 
-  function updateRestPeriod(id: string, patch: Partial<ProfileContract['restPeriods'][number]>) {
-    if (!contractObj) return;
-    syncFromObj({
-      ...contractObj,
-      restPeriods: contractObj.restPeriods.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    });
+  /**
+   * confirm_apply:
+   * - NÃO confiamos no shadcn Checkbox para FormData.
+   * - Checkbox é UI-only; o valor real vai em hidden input (true/false).
+   */
+  const [confirmApplyUi, setConfirmApplyUi] = React.useState(false);
+
+  /**
+   * Releitura pós-save:
+   * - Ao salvar com sucesso, fazemos router.refresh() para reexecutar SSR (loadProfileAction).
+   * - Quando a prop initialContractJson mudar por causa desse refresh, sincronizamos o state local.
+   * - NÃO sobrescrevemos edição do usuário em momentos arbitrários: só quando o refresh foi provocado por save ok.
+   */
+  const [pendingServerSync, setPendingServerSync] = React.useState(false);
+
+  React.useEffect(() => {
+    if (state.ok) {
+      setPendingServerSync(true);
+      router.refresh();
+    }
+  }, [state.ok, router]);
+
+  React.useEffect(() => {
+    if (!pendingServerSync) return;
+
+    setContractJson(props.initialContractJson);
+    setConfirmApplyUi(false);
+    setPendingServerSync(false);
+  }, [pendingServerSync, props.initialContractJson]);
+
+  const canSubmit =
+    contractJson.trim().length > 0 &&
+    parsed.ok &&
+    confirmApplyUi &&
+    !isPending;
+
+  // ===== Rest Periods Modal (UI-only) =====
+  const [restDialogOpen, setRestDialogOpen] = React.useState(false);
+  const [restRange, setRestRange] = React.useState<{ from?: Date; to?: Date } | undefined>(undefined);
+
+  function openRestDialog() {
+    setRestRange(undefined);
+    setRestDialogOpen(true);
+  }
+
+  function confirmRestDialog() {
+    const from = restRange?.from;
+    const to = restRange?.to;
+
+    // 1 clique (apenas from) => salva como 1 dia (from==to)
+    if (from && !to) {
+      const d = isoDateSaoPaulo(from);
+      addRestPeriodWithDates(d, d);
+      setRestDialogOpen(false);
+      return;
+    }
+
+    // 2 cliques (range completo)
+    if (from && to) {
+      addRestPeriodWithDates(isoDateSaoPaulo(from), isoDateSaoPaulo(to));
+      setRestDialogOpen(false);
+    }
+  }
+
+  function restLabel(p: ProfileContract['restPeriods'][number]): string {
+    const start = isoToBR(p.startDate);
+    const end = isoToBR(p.endDate);
+    if (!p.startDate || !p.endDate) return 'Período';
+    if (p.startDate === p.endDate) return start;
+    return `${start} até ${end}`;
   }
 
   return (
-    <Card className="rounded-2xl">
-      <CardHeader>
-        <CardTitle className="text-xl">Editar Perfil (Fase 1)</CardTitle>
+    <TooltipProvider delayDuration={150}>
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-xl">Meu Perfil</CardTitle>
+            <HelpTip text="Aqui você pode configurar todo o seu planejamento de estudos e o sistema monta o cronograma perfeito para você e o seu tempo." />
+          </div>
 
-        {props.authStatusMessage ? (
-          <Alert className="mt-3">
-            <div className="text-sm">{props.authStatusMessage}</div>
-          </Alert>
-        ) : null}
+          {props.authStatusMessage ? (
+            <Alert className="mt-3">
+              <div className="text-sm">{props.authStatusMessage}</div>
+            </Alert>
+          ) : null}
+        </CardHeader>
 
-        <p className="text-sm text-muted-foreground mt-2">
-          Esta tela é <strong>camada de input</strong>. Nenhuma regra crítica é aplicada aqui.
-          O backend valida e pode rejeitar estados inválidos.
-        </p>
-      </CardHeader>
+        <CardContent>
+          {formDisabledReason ? (
+            <Alert className="mb-4">
+              <div className="text-sm">{formDisabledReason}</div>
+            </Alert>
+          ) : null}
 
-      <CardContent>
-        <Tabs defaultValue={defaultTab} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="form">Formulário</TabsTrigger>
-            <TabsTrigger value="json">JSON</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="form">
-            {formDisabledReason ? (
-              <Alert>
-                <div className="text-sm">{formDisabledReason}</div>
-              </Alert>
-            ) : null}
-
-            <div className={formDisabledReason ? 'opacity-50 pointer-events-none' : ''}>
-              <div className="space-y-6">
-                {/* Regras gerais */}
-                <Card className="rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-base">Regras gerais</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Modo de estudo</Label>
-                      <Select
-                        value={contractObj?.rules.studyMode ?? 'FIXO'}
-                        onValueChange={(v) => updateRulesStudyMode(v as StudyMode)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="FIXO">FIXO</SelectItem>
-                          <SelectItem value="CICLO">CICLO</SelectItem>
-                        </SelectContent>
-                      </Select>
+          <div className={formDisabledReason ? 'opacity-50 pointer-events-none' : ''}>
+            <div className="space-y-6">
+              {/* Modo de Estudos */}
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-base">Modo de Estudos</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center">
+                      <Label>Método de Estudos</Label>
+                      <HelpTip text="Fixo: repete as mesmas matérias no dia. Ciclo: alterna entre todas as matérias cadastradas." />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Limite de matérias de teoria por dia (1..9)</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={9}
-                        value={contractObj?.rules.subjectsPerDayLimit ?? 1}
-                        onChange={(e) => updateRulesSubjectsPerDayLimit(clampInt(e.target.value, 1))}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                    <Select
+                      value={contractObj?.rules.studyMode ?? 'FIXO'}
+                      onValueChange={(v) => updateRulesStudyMode(v as StudyMode)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FIXO">FIXO</SelectItem>
+                        <SelectItem value="CICLO">CICLO</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* Regras por dia da semana */}
-                <Card className="rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-base">Semana (horário + tipos)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {(contractObj?.weekdayRules ?? []).slice().sort((a, b) => a.weekday - b.weekday).map((r) => {
+                  <div className="space-y-2">
+                    <div className="flex items-center">
+                      <Label>Limite de matérias por dia</Label>
+                      <HelpTip text="Defina quantas matérias principais você fará por dia. A leitura de lei seca, informativos e questões não entram nesse limite." />
+                    </div>
+
+                    <Input
+                      type="number"
+                      min={1}
+                      max={9}
+                      value={contractObj?.rules.subjectsPerDayLimit ?? 1}
+                      onChange={(e) => updateRulesSubjectsPerDayLimit(clampInt(e.target.value, 1))}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Semana */}
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">Horários Semanais e Atividades</CardTitle>
+                    <HelpTip text="Aqui você informa quais os dias irá estudar, quanto tempo em cada dia, bem como o que pretende estudar." />
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  {(contractObj?.weekdayRules ?? [])
+                    .slice()
+                    .sort((a, b) => a.weekday - b.weekday)
+                    .map((r) => {
                       const disableTypes = r.dailyMinutes === 0;
 
+                      const hhmm = minutesToHHMM(r.dailyMinutes);
+                      const selected = selectedTypesFromRule(r);
+
                       return (
-                        <div key={r.weekday} className="rounded-xl border p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="font-medium">{weekdayLabel(r.weekday)}</div>
+                        <div key={r.weekday} className="rounded-xl border p-4">
+                          {/* Linha única (desktop) / quebra suave (mobile) */}
+<div className="flex flex-col gap-3 md:grid md:grid-cols-[7.25rem_6.5rem_1fr] md:items-center md:gap-2">
+  {/* Dia */}
+  <div className="font-medium md:whitespace-nowrap">
+  {weekdayLabel(r.weekday)}
+</div>
 
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs">Minutos do dia</Label>
-                              <Input
-                                className="w-28"
-                                type="number"
-                                min={0}
-                                max={1440}
-                                value={r.dailyMinutes}
-                                onChange={(e) => updateWeekdayRule(r.weekday, { dailyMinutes: clampInt(e.target.value, r.dailyMinutes) })}
-                              />
-                            </div>
-                          </div>
+  {/* Tempo (HH:MM) + tip */}
+  <div className="flex items-center gap-1">
+  <Input
+    className="w-20 px-2 tabular-nums"
+    inputMode="numeric"
+    placeholder="HH:MM"
+    value={hhmm}
+    onChange={(e) => {
+      const parsed = tryHHMMToMinutes(e.target.value);
+      if (!parsed.ok) return;
+      updateWeekdayRule(r.weekday, { dailyMinutes: parsed.minutes });
+    }}
+  />
+  <HelpTip text="Quanto tempo você terá para estudar neste dia. Use o formato HH:MM." />
+</div>
 
-                          {disableTypes ? (
-                            <p className="text-xs text-muted-foreground">
-                              UX: tipos desabilitados quando minutos = 0. (O backend também rejeita estados inválidos.)
-                            </p>
-                          ) : null}
+  {/* Atividades (tooltip ancorado à direita, fora do fluxo) */}
+<div className="relative">
+  <div className="flex items-center justify-start md:justify-end">
+    <ToggleGroup
+      type="multiple"
+      disabled={disableTypes}
+      value={disableTypes ? [] : selected}
+      onValueChange={(values) => {
+        const v = values as StudyTypeKey[];
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <label className="flex items-center gap-2 text-sm">
-                              <Checkbox
-                                disabled={disableTypes}
-                                checked={disableTypes ? false : r.hasTheory}
-                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasTheory: Boolean(v) })}
-                              />
-                              Teoria
-                            </label>
+        updateWeekdayRule(r.weekday, {
+          hasTheory: v.includes('THEORY'),
+          hasQuestions: v.includes('QUESTIONS'),
+          hasInformatives: v.includes('INFORMATIVES'),
+          hasLeiSeca: v.includes('LEI_SECA'),
+        });
+      }}
+      className={`justify-start md:justify-end ${disableTypes ? 'opacity-60' : ''}`}
+    >
+      <ToggleGroupItem
+        value="THEORY"
+        aria-label="Teoria"
+        className="rounded-full border border-muted-foreground/30 bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=on]:bg-emerald-500/15 data-[state=on]:text-emerald-950 data-[state=on]:border-emerald-500/40 data-[state=on]:shadow"
+      >
+        Teoria
+      </ToggleGroupItem>
 
-                            <label className="flex items-center gap-2 text-sm">
-                              <Checkbox
-                                disabled={disableTypes}
-                                checked={disableTypes ? false : r.hasQuestions}
-                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasQuestions: Boolean(v) })}
-                              />
-                              Questões
-                            </label>
+      <ToggleGroupItem
+        value="QUESTIONS"
+        aria-label="Questões"
+        className="rounded-full border border-muted-foreground/30 bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=on]:bg-emerald-500/15 data-[state=on]:text-emerald-950 data-[state=on]:border-emerald-500/40 data-[state=on]:shadow"
+      >
+        Questões
+      </ToggleGroupItem>
 
-                            <label className="flex items-center gap-2 text-sm">
-                              <Checkbox
-                                disabled={disableTypes}
-                                checked={disableTypes ? false : r.hasInformatives}
-                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasInformatives: Boolean(v) })}
-                              />
-                              Informativos
-                            </label>
+      <ToggleGroupItem
+        value="INFORMATIVES"
+        aria-label="Informativos"
+        className="rounded-full border border-muted-foreground/30 bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=on]:bg-emerald-500/15 data-[state=on]:text-emerald-950 data-[state=on]:border-emerald-500/40 data-[state=on]:shadow"
+      >
+        Informativos
+      </ToggleGroupItem>
 
-                            <label className="flex items-center gap-2 text-sm">
-                              <Checkbox
-                                disabled={disableTypes}
-                                checked={disableTypes ? false : r.hasLeiSeca}
-                                onCheckedChange={(v) => updateWeekdayRule(r.weekday, { hasLeiSeca: Boolean(v) })}
-                              />
-                              Lei Seca
-                            </label>
-                          </div>
+      <ToggleGroupItem
+        value="LEI_SECA"
+        aria-label="Lei Seca"
+        className="rounded-full border border-muted-foreground/30 bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=on]:bg-emerald-500/15 data-[state=on]:text-emerald-950 data-[state=on]:border-emerald-500/40 data-[state=on]:shadow"
+      >
+        Lei Seca
+      </ToggleGroupItem>
+    </ToggleGroup>
+  </div>
+
+  {/* Tooltip fora do fluxo (não desalinha a coluna) */}
+  <div className="absolute right-0 top-1/2 -translate-y-1/2">
+  </div>
+</div>
+
+</div>
+
                         </div>
                       );
                     })}
-                  </CardContent>
-                </Card>
+                </CardContent>
+              </Card>
 
-                {/* Extras */}
-                <Card className="rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-base">Durações globais de extras (minutos)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
+              {/* Extras */}
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">Tempo para Questões, Informativos e Lei Seca</CardTitle>
+                    <HelpTip text="Defina quanto tempo você quer reservar, no dia, para Questões, Informativos e Lei Seca." />
+                  </div>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center">
                       <Label>Questões</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={1440}
-                        value={contractObj?.extrasDurations.questionsMinutes ?? 0}
-                        onChange={(e) => updateExtras({ questionsMinutes: clampInt(e.target.value, 0) })}
-                      />
+                      <HelpTip text="Tempo diário reservado para resolver questões." />
                     </div>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="HH:MM"
+                      value={minutesToHHMM(contractObj?.extrasDurations.questionsMinutes ?? 0)}
+                      onChange={(e) => {
+                        const parsed = tryHHMMToMinutes(e.target.value);
+                        if (!parsed.ok) return;
+                        updateExtras({ questionsMinutes: parsed.minutes });
+                      }}
+                    />
+                  </div>
 
-                    <div className="space-y-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center">
                       <Label>Informativos</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={1440}
-                        value={contractObj?.extrasDurations.informativesMinutes ?? 0}
-                        onChange={(e) => updateExtras({ informativesMinutes: clampInt(e.target.value, 0) })}
-                      />
+                      <HelpTip text="Tempo diário reservado para leitura de informativos." />
                     </div>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="HH:MM"
+                      value={minutesToHHMM(contractObj?.extrasDurations.informativesMinutes ?? 0)}
+                      onChange={(e) => {
+                        const parsed = tryHHMMToMinutes(e.target.value);
+                        if (!parsed.ok) return;
+                        updateExtras({ informativesMinutes: parsed.minutes });
+                      }}
+                    />
+                  </div>
 
-                    <div className="space-y-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center">
                       <Label>Lei Seca</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={1440}
-                        value={contractObj?.extrasDurations.leiSecaMinutes ?? 0}
-                        onChange={(e) => updateExtras({ leiSecaMinutes: clampInt(e.target.value, 0) })}
-                      />
+                      <HelpTip text="Tempo diário reservado para leitura de lei seca." />
                     </div>
-                  </CardContent>
-                </Card>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="HH:MM"
+                      value={minutesToHHMM(contractObj?.extrasDurations.leiSecaMinutes ?? 0)}
+                      onChange={(e) => {
+                        const parsed = tryHHMMToMinutes(e.target.value);
+                        if (!parsed.ok) return;
+                        updateExtras({ leiSecaMinutes: parsed.minutes });
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-                {/* Revisões */}
-                <Card className="rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-base">Revisões automáticas</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
+              {/* Revisões */}
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-base">Revisões automáticas</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
                       <Label>Ativar revisões automáticas</Label>
-                      <Switch
-                        checked={Boolean(contractObj?.autoReviewPolicy.enabled)}
-                        onCheckedChange={(v) => updateAutoReview({ enabled: Boolean(v) })}
-                      />
+                      <HelpTip text="Ative para incluir revisões automáticas na sua rotina." />
                     </div>
+                    <Switch
+                      checked={Boolean(contractObj?.autoReviewPolicy.enabled)}
+                      onCheckedChange={(v) => updateAutoReview({ enabled: Boolean(v) })}
+                    />
+                  </div>
 
-                    {contractObj?.autoReviewPolicy.enabled ? (
+                  {contractObj?.autoReviewPolicy.enabled ? (
+                    <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label>Frequência (dias)</Label>
+                          <div className="flex items-center">
+                            <Label>Frequência (dias)</Label>
+                            <HelpTip text="Define de quanto em quanto tempo a revisão aparece." />
+                          </div>
                           <Select
                             value={String(contractObj.autoReviewPolicy.frequencyDays ?? '')}
                             onValueChange={(v) => {
@@ -454,125 +672,143 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Duração da revisão (minutos)</Label>
+                          <div className="flex items-center">
+                            <Label>Duração da revisão</Label>
+                            <HelpTip text="Quanto tempo você quer dedicar em cada revisão." />
+                          </div>
                           <Input
-                            type="number"
-                            min={0}
-                            max={1440}
-                            value={contractObj.autoReviewPolicy.reviewMinutes ?? 0}
-                            onChange={(e) => updateAutoReview({ reviewMinutes: clampInt(e.target.value, 0) })}
+                            inputMode="numeric"
+                            placeholder="HH:MM"
+                            value={minutesToHHMM(contractObj.autoReviewPolicy.reviewMinutes ?? 0)}
+                            onChange={(e) => {
+                              const parsed = tryHHMMToMinutes(e.target.value);
+                              if (!parsed.ok) return;
+                              updateAutoReview({ reviewMinutes: parsed.minutes });
+                            }}
                           />
                         </div>
 
-                        <div className="flex items-center justify-between md:items-end">
-                          <Label>Reservar bloco de tempo</Label>
-                          <Switch
-                            checked={Boolean(contractObj.autoReviewPolicy.reserveTimeBlock)}
-                            onCheckedChange={(v) => updateAutoReview({ reserveTimeBlock: Boolean(v) })}
-                          />
+                        {/* Switch -> Select (UI only) */}
+                        <div className="space-y-2">
+                          <div className="flex items-center">
+                            <Label>Reservar tempo na Meta Diária</Label>
+                            <HelpTip text="Se ativado, a revisão entra como um bloco de tempo planejado no seu dia." />
+                          </div>
+                          <Select
+                            value={contractObj.autoReviewPolicy.reserveTimeBlock ? 'true' : 'false'}
+                            onValueChange={(v) => updateAutoReview({ reserveTimeBlock: v === 'true' })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="false">Não reservar</SelectItem>
+                              <SelectItem value="true">Reservar</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-
-                        <p className="text-xs text-muted-foreground md:col-span-3">
-                          Observação: quando enabled=true, frequência e duração são obrigatórios (backend rejeita se faltar).
-                        </p>
                       </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
 
-                {/* Descansos (add/remove permitido neste bloco) */}
-                <Card className="rounded-2xl">
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-3">
-                      <CardTitle className="text-base">Períodos de descanso</CardTitle>
-                      <Button type="button" onClick={addRestPeriod}>
-                        Adicionar
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {(contractObj?.restPeriods ?? []).length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhum período cadastrado.
+                      <p className="text-xs text-muted-foreground">
+                        Quando ativadas, as revisões aparecem automaticamente na sua rotina de estudos conforme a frequência escolhida.
+                        Se você marcar Reservar tempo na Meta Diária, o sistema também separa um bloco de tempo para a revisão.
                       </p>
-                    ) : (
-                      (contractObj?.restPeriods ?? []).map((p) => (
-                        <div key={p.id} className="rounded-xl border p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="text-xs text-muted-foreground break-all">id: {p.id}</div>
-                            <Button type="button" onClick={() => removeRestPeriod(p.id)}>
-                              Remover
-                            </Button>
-                          </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label>Início</Label>
-                              <Input
-                                type="date"
-                                value={p.startDate}
-                                onChange={(e) => updateRestPeriod(p.id, { startDate: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Fim</Label>
-                              <Input
-                                type="date"
-                                value={p.endDate}
-                                onChange={(e) => updateRestPeriod(p.id, { endDate: e.target.value })}
-                              />
-                            </div>
-                          </div>
+              {/* Descansos */}
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center">
+                      <CardTitle className="text-base">Períodos de descanso</CardTitle>
+                      <HelpTip text="Nesses dias não há metas: o calendário fica livre, sistema não agenda atividades e seu streak não é prejudicado." />
+                    </div>
+                    <Button type="button" onClick={openRestDialog}>
+                      Adicionar
+                    </Button>
+                  </div>
+                </CardHeader>
 
-                          <p className="text-xs text-muted-foreground">
-                            Observação: datas vazias/ inválidas serão rejeitadas pelo backend.
-                          </p>
-                        </div>
-                      ))
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+                {/* Pills */}
+                <CardContent className="space-y-3">
+                  {(contractObj?.restPeriods ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum período cadastrado.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {(contractObj?.restPeriods ?? []).map((p) => (
+                        <div
+  key={p.id}
+  className="group relative flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm text-emerald-950"
+>
+  <span className="text-base leading-none">🏖️</span>
+  <span className="whitespace-nowrap">{restLabel(p)}</span>
+
+  <button
+    type="button"
+    aria-label="Remover período de descanso"
+    onClick={() => removeRestPeriod(p.id)}
+    className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-red-600 hover:bg-red-500/10"
+  >
+    ✕
+  </button>
+</div>
+
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </TabsContent>
+          </div>
 
-          <TabsContent value="json">
-            <form action={formAction} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="contract_json">Contrato completo (JSON)</Label>
-                <Textarea
-                  id="contract_json"
-                  name="contract_json"
-                  value={contractJson}
-                  onChange={(e) => setContractJson(e.target.value)}
-                  rows={18}
-                  placeholder="Cole aqui o ProfileContract completo (rules + 7 weekdayRules + extrasDurations + autoReviewPolicy + restPeriods)."
+          {/* Modal calendário (Adicionar descanso) */}
+          <Dialog open={restDialogOpen} onOpenChange={setRestDialogOpen}>
+            <DialogContent className="sm:max-w-[520px]">
+              <DialogHeader>
+                <DialogTitle>Selecionar período de descanso</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <Calendar
+                  mode="range"
+                  selected={restRange as any}
+                  onSelect={setRestRange as any}
+                  initialFocus
                 />
-                <p className="text-xs text-muted-foreground">
-                  Não há “salvamento parcial”. O UC-02 exige substituição integral.
-                </p>
-
-                {!contractJson.trim() ? (
-                  <Alert>
-                    <div className="text-sm">
-                      Sem perfil ainda: crie o primeiro contrato preenchendo o JSON completo.
-                      (Nenhum template automático é gerado pela UI.)
-                    </div>
-                  </Alert>
-                ) : null}
-
-                {!parsed.ok && contractJson.trim() ? (
-                  <Alert>
-                    <div className="text-sm">
-                      JSON inválido ou incompleto ({parsed.error}). Corrija para habilitar o formulário e/ou salvar.
-                    </div>
-                  </Alert>
-                ) : null}
               </div>
+
+              <DialogFooter className="gap-2">
+                <Button type="button" variant="secondary" onClick={() => setRestDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={confirmRestDialog}
+                  disabled={!restRange?.from}
+                >
+                  Confirmar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* SUBMISSÃO ÚNICA (commit de persistência) — sticky */}
+          <div className="mt-6 sticky bottom-0 z-10 -mx-6 px-6 pb-6 pt-4 bg-background/80 backdrop-blur border-t rounded-b-2xl">
+            <form action={formAction} className="space-y-4">
+              <input type="hidden" name="contract_json" value={contractJson} />
+              <input type="hidden" name="confirm_apply" value={confirmApplyUi ? 'true' : 'false'} />
 
               <div className="flex items-center gap-2">
-                <Checkbox id="confirm_apply" name="confirm_apply" />
-                <Label htmlFor="confirm_apply">Confirmo aplicar integralmente estas alterações</Label>
+                <Checkbox
+                  id="confirm_apply_footer"
+                  checked={confirmApplyUi}
+                  onCheckedChange={(v) => setConfirmApplyUi(Boolean(v))}
+                />
+                <Label htmlFor="confirm_apply_footer">Confirmo aplicar integralmente estas alterações</Label>
+                <HelpTip text="Esta confirmação é necessária para salvar as mudanças." />
               </div>
 
               {blockingErrors.length > 0 ? (
@@ -599,61 +835,25 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
 
               {state.message ? <p className="text-sm">{state.message}</p> : null}
 
-              <div className="flex gap-2">
-                <Button type="submit" disabled={isPending}>
+              <div className="flex items-center gap-3">
+                <Button type="submit" disabled={!canSubmit}>
                   {isPending ? 'Salvando...' : 'Salvar Perfil'}
                 </Button>
+
+                {!confirmApplyUi ? (
+                  <p className="text-xs text-muted-foreground">
+                    Para salvar, marque a confirmação.
+                  </p>
+                ) : null}
               </div>
+
+              <p className="text-xs text-muted-foreground">
+                Nota: este botão é o único commit de persistência.
+              </p>
             </form>
-          </TabsContent>
-        </Tabs>
-
-        {/* Submit (único) fica no JSON tab por enquanto:
-            - regra: nada de autosave.
-            - formulário apenas edita o JSON que será enviado. */}
-        <div className="mt-6">
-          <form action={formAction} className="space-y-4">
-            <input type="hidden" name="contract_json" value={contractJson} />
-
-            <div className="flex items-center gap-2">
-              <Checkbox id="confirm_apply_footer" name="confirm_apply" />
-              <Label htmlFor="confirm_apply_footer">Confirmo aplicar integralmente estas alterações</Label>
-            </div>
-
-            {blockingErrors.length > 0 ? (
-              <Alert>
-                <div className="text-sm font-medium">Erros bloqueantes</div>
-                <ul className="text-sm list-disc pl-5 mt-2">
-                  {blockingErrors.map((e, idx) => (
-                    <li key={`${e}-${idx}`}>{e}</li>
-                  ))}
-                </ul>
-              </Alert>
-            ) : null}
-
-            {informativeIssues.length > 0 ? (
-              <Alert>
-                <div className="text-sm font-medium">Avisos informativos</div>
-                <ul className="text-sm list-disc pl-5 mt-2">
-                  {informativeIssues.map((e, idx) => (
-                    <li key={idx}>{typeof e === 'string' ? e : JSON.stringify(e)}</li>
-                  ))}
-                </ul>
-              </Alert>
-            ) : null}
-
-            {state.message ? <p className="text-sm">{state.message}</p> : null}
-
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Salvando...' : 'Salvar Perfil (submissão única)'}
-            </Button>
-
-            <p className="text-xs text-muted-foreground">
-              Nota: o botão acima é o único commit de persistência. O formulário só altera o JSON local.
-            </p>
-          </form>
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
+    </TooltipProvider>
   );
 }

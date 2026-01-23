@@ -132,7 +132,17 @@ export async function createMateriaAction(fd: FormData) {
   const { createSubjectAggregateUseCase } = createSubjectsSsrComposition({ userId });
   const res = await createSubjectAggregateUseCase.execute({ userId, aggregate });
 
-  if (!res.ok) throw new Error(`${res.error.code}: ${res.error.message}`);
+if (!res.ok) {
+  // ✅ Mostra no terminal o erro real retornado pela Application/Infra (inclui "cause" quando existir)
+  console.error("[createMateriaAction] createSubjectAggregateUseCase failed:", res.error);
+
+  // ✅ Repassa mensagem com o máximo de contexto (sem stack interna do DB, só o payload do Result)
+  throw new Error(
+    `${res.error.code}: ${res.error.message}${
+      (res.error as any)?.details ? ` | details=${JSON.stringify((res.error as any).details)}` : ""
+    }`
+  );
+}
 
   revalidatePath("/materias");
   redirect(`/materias/${res.value.subjectId}`);

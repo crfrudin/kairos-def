@@ -171,10 +171,81 @@ export class SupabasePlanningContextPortSSR implements IPlanningContextPort {
       restPeriods: (restRes.data ?? []).map((r) => ({ startDate: r.start_date, endDate: r.end_date })),
     };
 
-    // =========================
-    // 2) SUBJECTS (FASE 2) — ainda não existe
-    // =========================
-    const subjects: SubjectTheoryDTO[] = [];
+// =========================
+// 2) SUBJECTS (FASE 2) — Matérias de THEORY elegíveis p/ planejamento
+// Regra canônica (compatível com PgSubjectRepository.listMinimal):
+// - isActive = !is_deleted && status === 'ATIVA'
+// - ordem: subject_priority_order.position (quando existir) -> name asc
+// =========================
+
+type DbSubjectRow = {
+  id: string;
+  name: string;
+  status: 'ATIVA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'PAUSADA' | 'BLOQUEADA';
+  is_deleted: boolean;
+  categories: string[] | null;
+};
+
+type DbSubjectPriorityRow = {
+  subject_id: string;
+  position: number;
+};
+
+const subjectsRes = await client
+  .from('subjects')
+  .select('id, name, status, is_deleted, categories')
+  .eq('user_id', userId)
+  // planejamento de TEORIA: só matérias que possuem categoria THEORY
+  .contains('categories', ['THEORY'])
+  .returns<DbSubjectRow[]>();
+
+if (subjectsRes.error) {
+  throw new Error(`DB_SELECT_SUBJECTS_FOR_PLANNING_FAILED: ${subjectsRes.error.message}`);
+}
+
+const priorityRes = await client
+  .from('subject_priority_order')
+  .select('subject_id, position')
+  .eq('user_id', userId)
+  .returns<DbSubjectPriorityRow[]>();
+
+if (priorityRes.error) {
+  throw new Error(`DB_SELECT_SUBJECT_PRIORITY_ORDER_FAILED: ${priorityRes.error.message}`);
+}
+
+const positionById = new Map<string, number>();
+for (const r of priorityRes.data ?? []) {
+  const id = String(r.subject_id);
+  const pos = Number(r.position);
+  if (Number.isFinite(pos)) positionById.set(id, pos);
+}
+
+const rawSubjects = subjectsRes.data ?? [];
+
+// Ordenação determinística idêntica ao SQL do PgSubjectRepository.listMinimal:
+rawSubjects.sort((a, b) => {
+  const pa = positionById.get(String(a.id));
+  const pb = positionById.get(String(b.id));
+
+  const aHas = typeof pa === 'number';
+  const bHas = typeof pb === 'number';
+
+  // "case when position is null then 1 else 0 end" -> os COM posição vêm primeiro
+  if (aHas !== bHas) return aHas ? -1 : 1;
+
+  // depois por position asc (quando ambos têm)
+  if (aHas && bHas && pa !== pb) return (pa as number) - (pb as number);
+
+  // fallback final: name asc (estável e auditável)
+  return String(a.name).localeCompare(String(b.name));
+});
+
+// Mapeia para o read model mínimo do motor
+const subjects: SubjectTheoryDTO[] = rawSubjects.map((s) => ({
+  id: String(s.id),
+  name: String(s.name),
+  isActive: !Boolean(s.is_deleted) && String(s.status) === 'ATIVA',
+}));
 
     // =========================
     // 3) REVIEW TASKS (review_ledger)
