@@ -55,6 +55,15 @@ export async function runRobotDebugAction(): Promise<unknown> {
 }
 
 /**
+ * ✅ PROD manual: executa o robô COM persistência no DB (respeita guard 1x/dia).
+ * Retorna o resultado do robô para a UI (inclui skipped se já rodou hoje).
+ */
+export async function runRobotPersistAction(): Promise<unknown> {
+  await requireAuth();
+  return runInformativesRobot({ debug: false });
+}
+
+/**
  * Estado “oficial” (DB) — continua útil para ver o que foi persistido.
  */
 export async function getRobotStateAction(): Promise<
