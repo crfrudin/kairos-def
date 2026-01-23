@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ProfileStatusCard } from "@/app/(app)/dashboard/components/ProfileStatusCard";
 import { DailyGoalStatusCard } from "@/app/(app)/dashboard/components/DailyGoalStatusCard";
 import { AuthStatusCard } from "@/app/(app)/dashboard/components/AuthStatusCard";
+import { AdministrativeProfileStatusCard } from "@/app/(app)/dashboard/components/AdministrativeProfileStatusCard";
 
 function CardSkeleton(props: { title: string }) {
   return (
@@ -61,6 +62,10 @@ export default function DashboardPage() {
 
         <Suspense fallback={<CardSkeleton title="Autenticação" />}>
           <AuthStatusCard />
+        </Suspense>
+
+        <Suspense fallback={<CardSkeleton title="Dados administrativos" />}>
+          <AdministrativeProfileStatusCard />
         </Suspense>
 
         <FuturePlaceholderCard

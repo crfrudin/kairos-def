@@ -1,16 +1,22 @@
-// src/features/subjects/infra/repositories/PgInformativeLatestExtraordinaryRepository.ts
-
 import type { PoolClient } from "pg";
 import type {
   IInformativeLatestExtraordinaryRepository,
   InformativeLatestExtraordinaryRow,
+  ExtraordinaryTribunal,
 } from "@/features/subjects/application/ports/IInformativeLatestExtraordinaryRepository";
-import type { ExtraordinaryTribunal } from "@/features/subjects/application/ports/IInformativeLatestExtraordinaryRepository";
 
-function toIso(ts: any): string {
-  if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === "string") return new Date(ts).toISOString();
-  return new Date(ts).toISOString();
+function toIso(ts: unknown): string {
+  const d =
+    ts instanceof Date
+      ? ts
+      : typeof ts === "string" || typeof ts === "number"
+        ? new Date(ts)
+        : new Date(String(ts));
+
+  if (!Number.isFinite(d.getTime())) {
+    throw new Error("INVALID_TIMESTAMP");
+  }
+  return d.toISOString();
 }
 
 export class PgInformativeLatestExtraordinaryRepository implements IInformativeLatestExtraordinaryRepository {

@@ -8,9 +8,14 @@ import { Card, CardContent } from "@/components/ui/card";
 
 import { runRobotDebugAction } from "./actions";
 
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 export function RoboDebugClient() {
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function onRun() {
@@ -19,8 +24,8 @@ export function RoboDebugClient() {
     try {
       const r = await runRobotDebugAction();
       setResult(r ?? null);
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+    } catch (e: unknown) {
+      setError(toErrorMessage(e));
     } finally {
       setRunning(false);
     }
@@ -47,7 +52,9 @@ export function RoboDebugClient() {
         ) : result ? (
           <div className="space-y-2">
             <div className="text-sm font-semibold">Resultado do debug (retorno do robô)</div>
-            <pre className="text-xs overflow-auto rounded-md border p-3">{JSON.stringify(result, null, 2)}</pre>
+            <pre className="text-xs overflow-auto rounded-md border p-3">
+              {JSON.stringify(result, null, 2)}
+            </pre>
           </div>
         ) : (
           <div className="text-sm text-muted-foreground">Nenhuma execução de debug nesta sessão.</div>

@@ -1,13 +1,11 @@
-// src/features/subjects/infra/repositories/PgInformativeLatestRepository.ts
-
 import type { PoolClient } from "pg";
 import type { IInformativeLatestRepository, InformativeLatestRow } from "@/features/subjects/application/ports/IInformativeLatestRepository";
 import type { Tribunal } from "@/features/subjects/application/ports/IInformativeFollowRepository";
 
-function toIso(ts: any): string {
+function toIso(ts: unknown): string {
   if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === "string") return new Date(ts).toISOString();
-  return new Date(ts).toISOString();
+  if (typeof ts === "string" || typeof ts === "number") return new Date(ts).toISOString();
+  return new Date(String(ts)).toISOString();
 }
 
 export class PgInformativeLatestRepository implements IInformativeLatestRepository {

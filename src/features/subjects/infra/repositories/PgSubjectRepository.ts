@@ -31,7 +31,6 @@ const VIDEO_PACING: ReadonlyArray<VideoPacingMode> = ['FIXED_BLOCKS_PER_DAY', 'A
 
 // Importante: o schema consolidado (subjects.video_playback_speed) usa X1|X1_5|X2.
 // O domínio/port pode evoluir; aqui aceitamos também strings do UI legado (1x/1.5x/2x) na escrita.
-const DB_VIDEO_SPEED: ReadonlyArray<VideoPlaybackSpeed> = ['X1', 'X1_5', 'X2'] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);

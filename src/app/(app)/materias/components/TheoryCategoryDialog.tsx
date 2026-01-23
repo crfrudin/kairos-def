@@ -45,7 +45,7 @@ function nToString(v: number | null | undefined): string {
   return String(v);
 }
 
-function s(v: any, fallback = ""): string {
+function s(v: unknown, fallback = ""): string {
   const x = String(v ?? "").trim();
   return x ? x : fallback;
 }

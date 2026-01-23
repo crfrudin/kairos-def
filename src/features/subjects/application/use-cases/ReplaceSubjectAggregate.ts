@@ -12,24 +12,30 @@ export interface ReplaceSubjectAggregateUseCase {
   }): Promise<Result<{ updated: true }>>;
 }
 
-function isNonNeg(n: any): boolean {
-  return Number.isFinite(n) && n >= 0;
+type ReplaceAggregate = Parameters<ReplaceSubjectAggregateUseCase["execute"]>[0]["aggregate"];
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+function isNonNeg(n: unknown): boolean {
+  return typeof n === "number" && Number.isFinite(n) && n >= 0;
 }
 
 function validateAggregateForReplace(input: {
   userId: UUID;
   subjectId: UUID;
-  aggregate: any;
+  aggregate: ReplaceAggregate;
 }): Result<true> {
   const { aggregate } = input;
 
-  const categories = new Set<string>((aggregate?.subject?.categories ?? []).map(String));
+  const categories = new Set<string>((aggregate.subject.categories ?? []).map(String));
 
   const hasTheory = categories.has("THEORY");
   const hasQuestions = categories.has("QUESTIONS");
   const hasLaw = categories.has("LAW");
 
-  // Presença de auxiliares deve ser coerente com categorias
   if (!hasTheory && (aggregate.readingTrack || aggregate.videoTrack)) {
     return fail("INVARIANT_VIOLATION", "THEORY not selected but theory tracks were provided.");
   }
@@ -40,7 +46,6 @@ function validateAggregateForReplace(input: {
     return fail("INVARIANT_VIOLATION", "LAW not selected but lawConfig was provided.");
   }
 
-  // Reading invariantes mínimos
   if (aggregate.readingTrack) {
     const t = aggregate.readingTrack;
     if (!isNonNeg(t.totalPages) || !isNonNeg(t.readPages)) {
@@ -62,7 +67,6 @@ function validateAggregateForReplace(input: {
     }
   }
 
-  // Video invariantes mínimos
   if (aggregate.videoTrack) {
     const t = aggregate.videoTrack;
     if (!isNonNeg(t.totalBlocks) || !isNonNeg(t.watchedBlocks)) {
@@ -84,13 +88,11 @@ function validateAggregateForReplace(input: {
     }
   }
 
-  // Questions invariantes mínimos
   if (aggregate.questionsMeta) {
     const q = aggregate.questionsMeta;
     if (!isNonNeg(q.dailyTarget)) return fail("INVARIANT_VIOLATION", "questions.dailyTarget must be >= 0.");
   }
 
-  // Law invariantes mínimos
   if (aggregate.lawConfig) {
     const l = aggregate.lawConfig;
     if (!isNonNeg(l.totalArticles) || !isNonNeg(l.readArticles)) {
@@ -118,7 +120,11 @@ export function createReplaceSubjectAggregateUseCase(deps: { tx: ISubjectsTransa
       if (!input.subjectId) return fail("VALIDATION_ERROR", "Missing subjectId.");
       if (!input.aggregate?.subject?.name) return fail("VALIDATION_ERROR", "Missing subject.name.");
 
-      const inv = validateAggregateForReplace({ userId: input.userId, subjectId: input.subjectId, aggregate: input.aggregate });
+      const inv = validateAggregateForReplace({
+        userId: input.userId,
+        subjectId: input.subjectId,
+        aggregate: input.aggregate,
+      });
       if (!inv.ok) return inv;
 
       const now = nowIso();
@@ -134,8 +140,8 @@ export function createReplaceSubjectAggregateUseCase(deps: { tx: ISubjectsTransa
         });
 
         return ok({ updated: true });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to replace subject aggregate.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to replace subject aggregate.", { cause: getErrorMessage(e) });
       }
     },
   };

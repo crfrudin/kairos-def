@@ -58,12 +58,19 @@ function stringifyIssue(x: unknown): string {
 }
 
 function extractBlockingArray(err: unknown): unknown[] | null {
-  // ProfileValidationError provavelmente carrega o array no construtor;
-  // extraímos de forma defensiva (sem acoplar a propriedade exata).
-  const anyErr = err as any;
-  if (Array.isArray(anyErr?.blocking)) return anyErr.blocking;
-  if (Array.isArray(anyErr?.errors)) return anyErr.errors;
-  if (Array.isArray(anyErr?.issues)) return anyErr.issues;
+  if (!err || typeof err !== "object") return null;
+
+  const rec = err as Record<string, unknown>;
+
+  const blocking = rec["blocking"];
+  if (Array.isArray(blocking)) return blocking;
+
+  const errors = rec["errors"];
+  if (Array.isArray(errors)) return errors;
+
+  const issues = rec["issues"];
+  if (Array.isArray(issues)) return issues;
+
   return null;
 }
 

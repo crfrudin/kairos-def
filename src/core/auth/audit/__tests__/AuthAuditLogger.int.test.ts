@@ -52,7 +52,7 @@ describe('AuthAuditLogger (integration)', () => {
     expect(Array.isArray(data)).toBe(true);
     expect(data!.length).toBe(1);
 
-    const row = data![0] as any;
+    const row = data![0] as { event_type: string; user_id: string | null; ip_hash: string; user_agent_hash: string; };
 
     expect(row.event_type).toBe('login_failure');
     expect(row.user_id).toBe(null);
@@ -92,6 +92,8 @@ describe('AuthAuditLogger (integration)', () => {
     expect(Array.isArray(data)).toBe(true);
     expect(data!.length).toBe(1);
 
-    expect((data![0] as any).user_id).toBe(null);
+    const row = data![0] as { user_id: string | null };
+
+      expect(row.user_id).toBe(null);
   });
 });

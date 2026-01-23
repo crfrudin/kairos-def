@@ -181,23 +181,27 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
       return;
     }
 
-    // 2) Extra STJ: só tenta se STJ + campo preenchido + ainda não ativo
-    let extraAttempted = false;
-    let extraFailedMessage: string | null = null;
+    // 2) Extra STJ: se STJ e ainda não ativo, cria SEMPRE (vazio => 0)
+let extraAttempted = false;
+let extraFailedMessage: string | null = null;
 
-    if (tribunal === "STJ" && !hasExtraActive && addExtraLastRead.trim() !== "") {
-      const extraLastReadNumber = Number(addExtraLastRead);
-      if (Number.isNaN(extraLastReadNumber)) {
-        // não desfaz o regular; apenas informa e segue
-        extraFailedMessage = "Campo 'Último lido extraordinário' inválido (não é número).";
-      } else {
-        extraAttempted = true;
-        const r2 = await uc_i02_add_extra(userId, { lastReadNumber: extraLastReadNumber });
-        if (!r2.ok) {
-          extraFailedMessage = r2.errorMessage;
-        }
-      }
-    }
+if (tribunal === "STJ" && !hasExtraActive) {
+  const raw = addExtraLastRead.trim();
+  const extraLastReadNumber = raw === "" ? 0 : Number(raw);
+
+  if (Number.isNaN(extraLastReadNumber)) {
+    toast.error("Não foi possível adicionar.", {
+      description: "Campo 'Último lido extraordinário' inválido (não é número).",
+    });
+    return;
+  }
+
+  extraAttempted = true;
+  const r2 = await uc_i02_add_extra(userId, { lastReadNumber: extraLastReadNumber });
+  if (!r2.ok) {
+    extraFailedMessage = r2.errorMessage;
+  }
+}
 
     setAddOpen(false);
     setAddTribunal("");
@@ -366,7 +370,7 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
                       <div className="text-sm font-medium">Último lido extraordinário</div>
                       <Input
                         inputMode="numeric"
-                        placeholder={hasExtraActive ? "Já configurado" : "Ex.: 10"}
+                        placeholder={hasExtraActive ? "Já configurado" : "Ex.: 10 (vazio = 0)"}
                         value={addExtraLastRead}
                         onChange={(e) => setAddExtraLastRead(e.target.value)}
                         disabled={isBlocked || hasExtraActive}
@@ -377,8 +381,8 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
                         </div>
                       ) : (
                         <div className="text-xs text-muted-foreground">
-                          Opcional. Se preencher, o sistema também criará o acompanhamento do STJ (Extraordinário).
-                        </div>
+  Se deixar vazio, será assumido <span className="font-medium">0</span> (acompanhar desde o início).
+</div>
                       )}
                     </div>
                   ) : null}

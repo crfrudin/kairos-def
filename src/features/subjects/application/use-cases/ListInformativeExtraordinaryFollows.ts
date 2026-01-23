@@ -17,6 +17,10 @@ export interface ListInformativeExtraordinaryFollowsUseCase {
   execute(input: { userId: UUID }): Promise<Result<{ items: ReadonlyArray<InformativeExtraordinaryFollowComputed> }>>;
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function compute(params: {
   latest: number | null;
   lastRead: number;
@@ -31,7 +35,9 @@ function compute(params: {
   return { unreadCount: unread, status: unread === 0 ? "EM_DIA" : "NOVOS" };
 }
 
-export function createListInformativeExtraordinaryFollowsUseCase(deps: { tx: ISubjectsTransaction }): ListInformativeExtraordinaryFollowsUseCase {
+export function createListInformativeExtraordinaryFollowsUseCase(deps: {
+  tx: ISubjectsTransaction;
+}): ListInformativeExtraordinaryFollowsUseCase {
   return {
     async execute(input) {
       if (!input.userId) return fail("UNAUTHENTICATED", "Missing userId.");
@@ -62,8 +68,8 @@ export function createListInformativeExtraordinaryFollowsUseCase(deps: { tx: ISu
         });
 
         return ok({ items });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to list extraordinary informative follows.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to list extraordinary informative follows.", { cause: errorMessage(e) });
       }
     },
   };

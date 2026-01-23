@@ -8,20 +8,24 @@ import type {
   SubjectAggregateDTO,
   SubjectCategory,
   SubjectStatus,
+  SubjectRow,
   ReadingPacingMode,
   VideoPacingMode,
 } from "@/features/subjects";
 
+type VideoPlaybackSpeed = "1x" | "1.5x" | "2x";
+type LawMode = "COUPLED_TO_THEORY" | "FIXED_ARTICLES_PER_DAY";
+
 function parseStatus(v: FormDataEntryValue | null): SubjectStatus {
   const s = String(v ?? "ATIVA");
-  const allowed = new Set<SubjectStatus>(["ATIVA", "EM_ANDAMENTO", "CONCLUIDA", "PAUSADA", "BLOQUEADA"]);
-  return allowed.has(s as any) ? (s as SubjectStatus) : "ATIVA";
+  const allowed: ReadonlySet<SubjectStatus> = new Set(["ATIVA", "EM_ANDAMENTO", "CONCLUIDA", "PAUSADA", "BLOQUEADA"]);
+  return allowed.has(s as SubjectStatus) ? (s as SubjectStatus) : "ATIVA";
 }
 
 function parseCategories(fd: FormData): SubjectCategory[] {
   const raw = fd.getAll("categories").map(String);
-  const allowed = new Set<SubjectCategory>(["THEORY", "QUESTIONS", "LAW"]);
-  return raw.filter((x): x is SubjectCategory => allowed.has(x as any));
+  const allowed: ReadonlySet<SubjectCategory> = new Set(["THEORY", "QUESTIONS", "LAW"]);
+  return raw.filter((x): x is SubjectCategory => allowed.has(x as SubjectCategory));
 }
 
 function numOrNull(v: FormDataEntryValue | null): number | null {
@@ -34,7 +38,9 @@ function numOrNull(v: FormDataEntryValue | null): number | null {
 }
 
 function numOrZero(v: FormDataEntryValue | null): number {
-  const n = Number(String(v ?? "0"));
+  const s = String(v ?? "0").trim();
+  if (s === "") return 0;
+  const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -42,11 +48,28 @@ function strOrEmpty(v: FormDataEntryValue | null): string {
   return String(v ?? "").trim();
 }
 
-function ensureUserId(): string {
-  const h = headers();
-  const userId = (h as any).get ? (h as any).get("x-kairos-user-id") ?? "" : "";
-  if (!userId) throw new Error("Missing authenticated user claim (x-kairos-user-id).");
-  return userId;
+function parseReadingPacingMode(v: FormDataEntryValue | null): ReadingPacingMode {
+  const s = String(v ?? "FIXED_PAGES_PER_DAY").trim();
+  const allowed: ReadonlySet<ReadingPacingMode> = new Set(["FIXED_PAGES_PER_DAY", "PACE_PAGES_PER_HOUR"]);
+  return allowed.has(s as ReadingPacingMode) ? (s as ReadingPacingMode) : "FIXED_PAGES_PER_DAY";
+}
+
+function parseVideoPacingMode(v: FormDataEntryValue | null): VideoPacingMode {
+  const s = String(v ?? "FIXED_BLOCKS_PER_DAY").trim();
+  const allowed: ReadonlySet<VideoPacingMode> = new Set(["FIXED_BLOCKS_PER_DAY", "AUTO_BY_DURATION"]);
+  return allowed.has(s as VideoPacingMode) ? (s as VideoPacingMode) : "FIXED_BLOCKS_PER_DAY";
+}
+
+function parseVideoPlaybackSpeed(v: FormDataEntryValue | null): VideoPlaybackSpeed {
+  const s = String(v ?? "1x").trim();
+  const allowed: ReadonlySet<VideoPlaybackSpeed> = new Set(["1x", "1.5x", "2x"]);
+  return allowed.has(s as VideoPlaybackSpeed) ? (s as VideoPlaybackSpeed) : "1x";
+}
+
+function parseLawMode(v: FormDataEntryValue | null): LawMode {
+  const s = String(v ?? "COUPLED_TO_THEORY").trim();
+  const allowed: ReadonlySet<LawMode> = new Set(["COUPLED_TO_THEORY", "FIXED_ARTICLES_PER_DAY"]);
+  return allowed.has(s as LawMode) ? (s as LawMode) : "COUPLED_TO_THEORY";
 }
 
 export async function replaceMateriaAction(input: { subjectId: string; formData: FormData }) {
@@ -66,17 +89,19 @@ export async function replaceMateriaAction(input: { subjectId: string; formData:
   const questionsEnabled = String(fd.get("questions_enabled") ?? "") === "on";
   const lawEnabled = String(fd.get("law_enabled") ?? "") === "on";
 
+  const nowIso = new Date().toISOString();
+
   const readingTrack = readingEnabled
     ? {
         userId,
         subjectId,
         totalPages: numOrZero(fd.get("reading_total_pages")),
         readPages: numOrZero(fd.get("reading_read_pages")),
-        pacingMode: String(fd.get("reading_pacing_mode") ?? "FIXED_PAGES_PER_DAY") as ReadingPacingMode,
+        pacingMode: parseReadingPacingMode(fd.get("reading_pacing_mode")),
         pagesPerDay: numOrNull(fd.get("reading_pages_per_day")),
         pagesPerHour: numOrNull(fd.get("reading_pages_per_hour")),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       }
     : null;
 
@@ -86,12 +111,12 @@ export async function replaceMateriaAction(input: { subjectId: string; formData:
         subjectId,
         totalBlocks: numOrZero(fd.get("video_total_blocks")),
         watchedBlocks: numOrZero(fd.get("video_watched_blocks")),
-        pacingMode: String(fd.get("video_pacing_mode") ?? "FIXED_BLOCKS_PER_DAY") as VideoPacingMode,
+        pacingMode: parseVideoPacingMode(fd.get("video_pacing_mode")),
         blocksPerDay: numOrNull(fd.get("video_blocks_per_day")),
         avgMinutes: numOrNull(fd.get("video_avg_minutes")),
-        playbackSpeed: String(fd.get("video_playback_speed") ?? "1x") as any,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        playbackSpeed: parseVideoPlaybackSpeed(fd.get("video_playback_speed")),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       }
     : null;
 
@@ -100,8 +125,8 @@ export async function replaceMateriaAction(input: { subjectId: string; formData:
         userId,
         subjectId,
         dailyTarget: numOrZero(fd.get("questions_daily_target")),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       }
     : null;
 
@@ -112,15 +137,15 @@ export async function replaceMateriaAction(input: { subjectId: string; formData:
         lawName: strOrEmpty(fd.get("law_name")),
         totalArticles: numOrZero(fd.get("law_total_articles")),
         readArticles: numOrZero(fd.get("law_read_articles")),
-        lawMode: String(fd.get("law_mode") ?? "COUPLED_TO_THEORY") as any,
+        lawMode: parseLawMode(fd.get("law_mode")),
         fixedArticlesPerDay: numOrNull(fd.get("law_fixed_articles_per_day")),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       }
     : null;
 
   const aggregate: Omit<SubjectAggregateDTO, "subject"> & {
-    subject: { name: string; categories: SubjectCategory[]; status: SubjectStatus; isDeleted: boolean };
+    subject: Omit<SubjectRow, "createdAt" | "updatedAt" | "id" | "userId">;
   } = {
     subject: {
       name,
@@ -138,7 +163,7 @@ export async function replaceMateriaAction(input: { subjectId: string; formData:
   const res = await replaceSubjectAggregateUseCase.execute({
     userId,
     subjectId,
-    aggregate: aggregate as any,
+    aggregate,
   });
 
   if (!res.ok) throw new Error(`${res.error.code}: ${res.error.message}`);

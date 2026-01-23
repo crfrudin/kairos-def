@@ -7,7 +7,14 @@ export interface DeactivateInformativeExtraordinaryFollowUseCase {
   execute(input: { userId: UUID; tribunal: ExtraordinaryTribunal }): Promise<Result<{ deactivated: true }>>;
 }
 
-export function createDeactivateInformativeExtraordinaryFollowUseCase(deps: { tx: ISubjectsTransaction }): DeactivateInformativeExtraordinaryFollowUseCase {
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+export function createDeactivateInformativeExtraordinaryFollowUseCase(deps: {
+  tx: ISubjectsTransaction;
+}): DeactivateInformativeExtraordinaryFollowUseCase {
   return {
     async execute(input) {
       if (!input.userId) return fail("UNAUTHENTICATED", "Missing userId.");
@@ -25,8 +32,8 @@ export function createDeactivateInformativeExtraordinaryFollowUseCase(deps: { tx
         });
 
         return ok({ deactivated: true });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to deactivate extraordinary informative follow.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to deactivate extraordinary informative follow.", { cause: getErrorMessage(e) });
       }
     },
   };

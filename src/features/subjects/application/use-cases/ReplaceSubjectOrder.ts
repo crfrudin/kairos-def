@@ -9,6 +9,11 @@ export interface ReplaceSubjectOrderUseCase {
   }): Promise<Result<{ replaced: true }>>;
 }
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
 export function createReplaceSubjectOrderUseCase(deps: { tx: ISubjectsTransaction }): ReplaceSubjectOrderUseCase {
   return {
     async execute(input) {
@@ -27,8 +32,8 @@ export function createReplaceSubjectOrderUseCase(deps: { tx: ISubjectsTransactio
         });
 
         return ok({ replaced: true });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to replace subject order.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to replace subject order.", { cause: getErrorMessage(e) });
       }
     },
   };

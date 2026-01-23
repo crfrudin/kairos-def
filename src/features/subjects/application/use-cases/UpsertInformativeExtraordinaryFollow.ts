@@ -12,7 +12,14 @@ export interface UpsertInformativeExtraordinaryFollowUseCase {
   }): Promise<Result<{ upserted: true }>>;
 }
 
-export function createUpsertInformativeExtraordinaryFollowUseCase(deps: { tx: ISubjectsTransaction }): UpsertInformativeExtraordinaryFollowUseCase {
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+export function createUpsertInformativeExtraordinaryFollowUseCase(deps: {
+  tx: ISubjectsTransaction;
+}): UpsertInformativeExtraordinaryFollowUseCase {
   return {
     async execute(input) {
       if (!input.userId) return fail("UNAUTHENTICATED", "Missing userId.");
@@ -34,8 +41,8 @@ export function createUpsertInformativeExtraordinaryFollowUseCase(deps: { tx: IS
         });
 
         return ok({ upserted: true });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to upsert extraordinary informative follow.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to upsert extraordinary informative follow.", { cause: getErrorMessage(e) });
       }
     },
   };

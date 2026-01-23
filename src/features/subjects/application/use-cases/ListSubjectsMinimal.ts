@@ -6,6 +6,11 @@ export interface ListSubjectsMinimalUseCase {
   execute(input: { userId: UUID }): Promise<Result<{ items: ReadonlyArray<{ id: UUID; name: string; isActive: boolean }> }>>;
 }
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
 export function createListSubjectsMinimalUseCase(deps: { tx: ISubjectsTransaction }): ListSubjectsMinimalUseCase {
   return {
     async execute(input) {
@@ -17,8 +22,8 @@ export function createListSubjectsMinimalUseCase(deps: { tx: ISubjectsTransactio
         });
 
         return ok({ items });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to list subjects (minimal).", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to list subjects (minimal).", { cause: getErrorMessage(e) });
       }
     },
   };

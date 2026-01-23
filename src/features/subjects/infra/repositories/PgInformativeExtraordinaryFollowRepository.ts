@@ -1,5 +1,3 @@
-// src/features/subjects/infra/repositories/PgInformativeExtraordinaryFollowRepository.ts
-
 import type { PoolClient } from "pg";
 import type {
   IInformativeExtraordinaryFollowRepository,
@@ -9,10 +7,18 @@ import type {
   ISOTimestamp,
 } from "@/features/subjects/application/ports/IInformativeExtraordinaryFollowRepository";
 
-function toIso(ts: any): string {
-  if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === "string") return new Date(ts).toISOString();
-  return new Date(ts).toISOString();
+function toIso(ts: unknown): string {
+  const d =
+    ts instanceof Date
+      ? ts
+      : typeof ts === "string" || typeof ts === "number"
+        ? new Date(ts)
+        : new Date(String(ts));
+
+  if (!Number.isFinite(d.getTime())) {
+    throw new Error("INVALID_TIMESTAMP");
+  }
+  return d.toISOString();
 }
 
 export class PgInformativeExtraordinaryFollowRepository implements IInformativeExtraordinaryFollowRepository {

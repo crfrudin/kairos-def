@@ -206,7 +206,7 @@ export default async function MateriaDetalhePage({ params }: { params: Promise<{
                 lawName: agg.lawConfig?.lawName ?? "",
                 totalArticles: agg.lawConfig?.totalArticles ?? 0,
                 readArticles: agg.lawConfig?.readArticles ?? 0,
-                lawMode: (agg.lawConfig?.lawMode as any) ?? "COUPLED_TO_THEORY",
+                lawMode: agg.lawConfig?.lawMode ?? "COUPLED_TO_THEORY",
                 fixedArticlesPerDay: agg.lawConfig?.fixedArticlesPerDay ?? null,
               }}
             />

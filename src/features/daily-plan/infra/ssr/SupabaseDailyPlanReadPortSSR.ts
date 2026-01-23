@@ -78,6 +78,7 @@ function extractTitle(meta: Record<string, unknown>, fallback: string): string {
 function omitTitle(meta: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!meta || Object.keys(meta).length === 0) return undefined;
   const { title: _title, ...rest } = meta;
+    void _title;
   return Object.keys(rest).length ? rest : undefined;
 }
 

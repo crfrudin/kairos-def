@@ -70,7 +70,13 @@ function makeValidContract(userId: UUID): ProfileContract {
 }
 
 function expectRlsError(err: unknown) {
-  const msg = String((err as any)?.message ?? err);
+  let msg = String(err);
+
+  if (err && typeof err === "object") {
+    const rec = err as Record<string, unknown>;
+    const m = rec["message"];
+    if (typeof m === "string") msg = m;
+  }
   expect(
     msg.includes('row-level security') ||
     msg.includes('permission denied') ||

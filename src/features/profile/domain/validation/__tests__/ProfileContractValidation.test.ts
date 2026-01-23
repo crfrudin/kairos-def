@@ -105,7 +105,7 @@ describe('ProfileContractValidation.validateProfileContract', () => {
 
   it('bloqueia STUDY_MODE_INVALID (valor fora de FIXO/CICLO)', () => {
     const contract = makeValidContract({
-      rules: { ...makeValidContract().rules, studyMode: 'OUTRO' as any },
+      rules: { ...makeValidContract().rules, studyMode: 'OUTRO' as unknown as "FIXO" | "CICLO" },
     });
     const res = validateProfileContract(contract, '2026-01-19');
     expect(codes(res)).toContain('STUDY_MODE_INVALID');

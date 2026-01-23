@@ -10,12 +10,14 @@ import type {
 } from '@/features/profile/application/ports/ProfileContract';
 import { ProfileIntegrityError } from '../errors/ProfileIntegrityError';
 
-function toIso(ts: any): string {
-  // pg retorna Date ou string; padroniza para ISO string
-  if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === 'string') return new Date(ts).toISOString();
-  return new Date(ts).toISOString();
+function toIso(ts: unknown): ISOTimestamp {
+  // pg retorna Date ou string/number; padroniza para ISO string
+  if (ts instanceof Date) return ts.toISOString() as ISOTimestamp;
+  if (typeof ts === "string" || typeof ts === "number") return new Date(ts).toISOString() as ISOTimestamp;
+
+  throw new ProfileIntegrityError(`Perfil inconsistente: timestamp inválido no DB: ${String(ts)}`);
 }
+
 function toFrequencyDays(value: unknown): 1 | 7 | 30 | null {
   if (value === null || value === undefined) return null;
 

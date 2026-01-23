@@ -97,13 +97,16 @@ describe('FASE 1 · BLOCO 5 · PASSO 3 — Atomicidade com rollback real', () =>
     const now = '2026-01-20T00:00:00.000Z';
 
     // Vamos forçar falha na inserção de weekday_rules com weekday inválido (CHECK 1..7)
-    const bad = makeContract(userA, 3);
-    (bad.weekdayRules as any)[0].weekday = 99;
+      const bad = makeContract(userA, 3);
+      const badWeekdayRules = [...bad.weekdayRules];
+      badWeekdayRules[0] = { ...badWeekdayRules[0], weekday: 99 };
+      const bad2 = { ...bad, weekdayRules: badWeekdayRules };
+
 
     await expect(
       withRlsClient(pool, userA, async (c) => {
         const repo = new PgProfileRepository(c);
-        await repo.replaceFullContract({ userId: userA, contract: bad, now });
+        await repo.replaceFullContract({ userId: userA, contract: bad2, now });
       })
     ).rejects.toBeTruthy();
 

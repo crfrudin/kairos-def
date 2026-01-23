@@ -1,40 +1,44 @@
-// src/features/subjects/infra/repositories/PgStandaloneLawRepository.ts
-
-import type { PoolClient } from 'pg';
+import type { PoolClient } from "pg";
 import type {
   IStandaloneLawRepository,
   StandaloneLawRow,
   StandaloneLawBundleDTO,
   UUID,
   ISOTimestamp,
-} from '@/features/subjects/application/ports/IStandaloneLawRepository';
+} from "@/features/subjects/application/ports/IStandaloneLawRepository";
 
-function toIso(ts: any): string {
+type LawMode = StandaloneLawBundleDTO["lawMode"];
+
+function toIso(ts: unknown): string {
   if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === 'string') return new Date(ts).toISOString();
-  return new Date(ts).toISOString();
+  if (typeof ts === "string" || typeof ts === "number") return new Date(ts).toISOString();
+  return new Date(String(ts)).toISOString();
 }
 
-function bundleOrNull(r: any): StandaloneLawBundleDTO | null {
+function bundleOrNull(row: Record<string, unknown>): StandaloneLawBundleDTO | null {
+  const lawName = row["law_name"];
+  const totalArticles = row["total_articles"];
+  const readArticles = row["read_articles"];
+  const lawMode = row["law_mode"];
+  const fixedArticlesPerDay = row["fixed_articles_per_day"];
+
   const hasAny =
-    r.law_name !== null ||
-    r.total_articles !== null ||
-    r.read_articles !== null ||
-    r.law_mode !== null ||
-    r.fixed_articles_per_day !== null;
+    lawName !== null ||
+    totalArticles !== null ||
+    readArticles !== null ||
+    lawMode !== null ||
+    fixedArticlesPerDay !== null;
 
   if (!hasAny) return null;
 
-  // Bundle “válido” = todos os campos obrigatórios presentes.
-  // (O DB já impõe o CHECK condicional; aqui apenas reconstruímos determinística e seguramente.)
-  if (r.law_name === null || r.total_articles === null || r.read_articles === null || r.law_mode === null) return null;
+  if (lawName === null || totalArticles === null || readArticles === null || lawMode === null) return null;
 
   return {
-    lawName: String(r.law_name),
-    totalArticles: Number(r.total_articles),
-    readArticles: Number(r.read_articles),
-    lawMode: String(r.law_mode) as any,
-    fixedArticlesPerDay: r.fixed_articles_per_day === null ? null : Number(r.fixed_articles_per_day),
+    lawName: String(lawName),
+    totalArticles: Number(totalArticles),
+    readArticles: Number(readArticles),
+    lawMode: String(lawMode) as LawMode,
+    fixedArticlesPerDay: fixedArticlesPerDay === null ? null : Number(fixedArticlesPerDay),
   };
 }
 
@@ -54,15 +58,18 @@ export class PgStandaloneLawRepository implements IStandaloneLawRepository {
       [userId]
     );
 
-    return res.rows.map((r) => ({
-      id: String(r.id),
-      userId: String(r.user_id),
-      otherSubjectLabel: String(r.other_subject_label),
-      bundle: bundleOrNull(r),
-      isDeleted: Boolean(r.is_deleted),
-      createdAt: toIso(r.created_at),
-      updatedAt: toIso(r.updated_at),
-    }));
+    return res.rows.map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: String(row["id"]),
+        userId: String(row["user_id"]),
+        otherSubjectLabel: String(row["other_subject_label"]),
+        bundle: bundleOrNull(row),
+        isDeleted: Boolean(row["is_deleted"]),
+        createdAt: toIso(row["created_at"]),
+        updatedAt: toIso(row["updated_at"]),
+      };
+    });
   }
 
   async getById(params: { userId: UUID; id: UUID }): Promise<StandaloneLawRow | null> {
@@ -79,15 +86,15 @@ export class PgStandaloneLawRepository implements IStandaloneLawRepository {
 
     if (res.rowCount === 0) return null;
 
-    const r = res.rows[0];
+    const row = res.rows[0] as Record<string, unknown>;
     return {
-      id: String(r.id),
-      userId: String(r.user_id),
-      otherSubjectLabel: String(r.other_subject_label),
-      bundle: bundleOrNull(r),
-      isDeleted: Boolean(r.is_deleted),
-      createdAt: toIso(r.created_at),
-      updatedAt: toIso(r.updated_at),
+      id: String(row["id"]),
+      userId: String(row["user_id"]),
+      otherSubjectLabel: String(row["other_subject_label"]),
+      bundle: bundleOrNull(row),
+      isDeleted: Boolean(row["is_deleted"]),
+      createdAt: toIso(row["created_at"]),
+      updatedAt: toIso(row["updated_at"]),
     };
   }
 
@@ -114,7 +121,7 @@ export class PgStandaloneLawRepository implements IStandaloneLawRepository {
       ]
     );
 
-    return { id: String(res.rows[0].id) };
+    return { id: String((res.rows[0] as Record<string, unknown>)["id"]) };
   }
 
   async replace(params: {

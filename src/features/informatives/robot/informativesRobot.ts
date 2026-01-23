@@ -52,6 +52,43 @@ function safeSlice(s: string, max: number) {
   return s.slice(0, max);
 }
 
+/**
+ * Engenharia/Sec:
+ * - Nunca propagar "any" vindo de erros/IO.
+ * - Sanitizar e truncar mensagens antes de persistir/logar (evita vazamento de payloads).
+ * - Extrair "cause" apenas quando for realmente um Error conhecido.
+ */
+type ErrorInfo = { message: string; cause?: string };
+
+function isErrorWithCause(e: unknown): e is Error & { cause?: unknown } {
+  return e instanceof Error;
+}
+
+function normalizeErrorInfo(e: unknown, maxLen = 600): ErrorInfo {
+  if (e instanceof Error) {
+    const msg = safeSlice(String(e.message ?? "Error"), maxLen);
+
+    let cause: string | undefined;
+    const rawCause: unknown = isErrorWithCause(e) ? e.cause : undefined;
+
+    if (rawCause instanceof Error) {
+      cause = safeSlice(String(rawCause.message ?? rawCause.name ?? "Cause"), maxLen);
+    } else if (typeof rawCause === "string") {
+      cause = safeSlice(rawCause, maxLen);
+    } else if (typeof rawCause === "number" || typeof rawCause === "boolean" || typeof rawCause === "bigint") {
+      cause = safeSlice(String(rawCause), maxLen);
+    } else if (rawCause && typeof rawCause === "object") {
+      // Evita vazar objeto inteiro; só um marcador seguro
+      cause = "Cause:object";
+    }
+
+    return { message: msg, cause };
+  }
+
+  return { message: safeSlice(String(e), maxLen) };
+}
+
+
 async function insertRunOrSkip(client: PoolClient, runDay: string) {
   try {
     const r = await client.query(
@@ -61,8 +98,9 @@ async function insertRunOrSkip(client: PoolClient, runDay: string) {
       [runDay, JSON.stringify({ runDay, stage: "STARTED" })]
     );
     return { inserted: true, runId: String(r.rows[0].id) } as const;
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
+  } catch (e: unknown) {
+  const info = normalizeErrorInfo(e);
+  const msg = info.message;
     if (msg.toLowerCase().includes("informative_robot_runs_unique_day") || msg.toLowerCase().includes("duplicate key")) {
       return { inserted: false, runId: null } as const;
     }
@@ -74,7 +112,7 @@ async function finalizeRun(
   client: PoolClient,
   runId: string,
   status: "SUCCESS" | "FAILED" | "SKIPPED",
-  details: any,
+  details: unknown,
   errorMessage?: string
 ) {
   await client.query(
@@ -84,8 +122,7 @@ async function finalizeRun(
          details = $3::jsonb,
          error_message = $4
      where id = $1`,
-    [runId, status, JSON.stringify(details ?? {}), errorMessage ?? null]
-  );
+[runId, status, safeJsonStringifyDetails(details), errorMessage ?? null]  );
 }
 
 async function upsertLatestRegular(client: PoolClient, tribunal: Tribunal, latest: number, source: string, checkedDay: string) {
@@ -146,13 +183,15 @@ async function fetchHtml(params: { url: string; timeoutMs: number }): Promise<Fe
 
     const text = await res.text();
     return { ok: true, httpStatus: res.status, text, finalUrl: res.url };
-  } catch (e: any) {
-    return {
-      ok: false,
-      httpStatus: null,
-      error: `FETCH_ERROR: ${String(e?.name ?? "Error")}: ${String(e?.message ?? e)}`,
-      cause: e?.cause ? String(e.cause?.message ?? e.cause) : undefined,
-    };
+  } catch (e: unknown) {
+  const info = normalizeErrorInfo(e);
+  const name = e instanceof Error ? e.name : "Error";
+  return {
+    ok: false,
+    httpStatus: null,
+    error: `FETCH_ERROR: ${name}: ${info.message}`,
+    cause: info.cause,
+  };
   } finally {
     t.clear();
   }
@@ -204,102 +243,6 @@ function parseByTribunal(tribunal: Tribunal, html: string): ParseResult {
  *   2) tenta casar no HTML "limpo/normalizado"
  *   3) se ainda falhar, tenta descobrir endpoints candidatos dentro do HTML e buscar (limitado) para extrair números
  */
-
-function parseStjV2FromHtml(html: string): { regular: ParseResult; extraordinary: ParseResult } {
-  // Aceita variações de "nº", "n°", "n." etc, inclusive entidades (&ordm; / &deg; / &#176;)
-  const nMarker = String.raw`(?:n\.?\s*(?:º|°|o|&ordm;|&deg;|&#176;|&#186;|&#x00BA;|&#x00B0;|&nbsp;)?\s*)`;
-  const num = String.raw`(\d{1,6})`;
-
-  // “Edição” e “Extraordinária” com variações de entidades comuns
-  const extraWord = String.raw`extraordin(?:a|á|&aacute;|&#225;|&#x00E1;)ria`;
-  const edicaoWord = String.raw`edi(?:ç|&ccedil;|&#231;|&#x00E7;)(?:a|ã|&atilde;|&#227;|&#x00E3;)o`;
-
-  const regularRawRe = new RegExp(String.raw`informativo\s+${nMarker}${num}`, "gi");
-  const extraRawRe = new RegExp(String.raw`${edicaoWord}\s+${extraWord}\s+${nMarker}${num}`, "gi");
-
-  const pickMax = (re: RegExp, src: string) => {
-    const nums: Array<{ n: number; raw: string }> = [];
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(src)) !== null) {
-      const n = Number(m[1]);
-      if (Number.isFinite(n)) nums.push({ n, raw: m[0] });
-    }
-    if (!nums.length) return { latest: null as number | null, matchText: undefined as string | undefined, count: 0 };
-    const latest = Math.max(...nums.map((x) => x.n));
-    const matchText = nums.find((x) => x.n === latest)?.raw;
-    return { latest, matchText, count: nums.length };
-  };
-
-  const rawRegular = pickMax(regularRawRe, html);
-  const rawExtra = pickMax(extraRawRe, html);
-
-  if (rawRegular.latest !== null || rawExtra.latest !== null) {
-    return {
-      regular:
-        rawRegular.latest === null
-          ? { latest: null, evidence: "no-match: STJ regular (HTML raw)" }
-          : {
-              latest: rawRegular.latest,
-              evidence: `match=stj_regular_raw max=${rawRegular.latest} matches=${rawRegular.count}`,
-              matchText: rawRegular.matchText,
-            },
-      extraordinary:
-        rawExtra.latest === null
-          ? { latest: null, evidence: "no-match: STJ extraordinary (HTML raw)" }
-          : {
-              latest: rawExtra.latest,
-              evidence: `match=stj_extra_raw max=${rawExtra.latest} matches=${rawExtra.count}`,
-              matchText: rawExtra.matchText,
-            },
-    };
-  }
-
-  // Fallback: limpar/normalizar (remove scripts/styles/tags + decode entidades comuns)
-  const decoded = String(html)
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<\/?[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&ordm;/gi, "º")
-    .replace(/&deg;/gi, "°")
-    .replace(/&#176;/g, "°")
-    .replace(/&#x00B0;/gi, "°")
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hx) => String.fromCharCode(parseInt(hx, 16)))
-    .replace(/&[a-zA-Z]+;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const norm = decoded
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}+/gu, "");
-
-  const regularCleanRe = /informativo\s+n\.?\s*(?:º|°|o)?\s*(\d{1,6})/gi;
-  const extraCleanRe = /edicao\s+extraordinaria\s+n\.?\s*(?:º|°|o)?\s*(\d{1,6})/gi;
-
-  const cleanRegular = pickMax(regularCleanRe, norm);
-  const cleanExtra = pickMax(extraCleanRe, norm);
-
-  return {
-    regular:
-      cleanRegular.latest === null
-        ? { latest: null, evidence: "no-match: STJ regular (HTML cleaned)" }
-        : {
-            latest: cleanRegular.latest,
-            evidence: `match=stj_regular_clean max=${cleanRegular.latest} matches=${cleanRegular.count}`,
-            matchText: cleanRegular.matchText,
-          },
-    extraordinary:
-      cleanExtra.latest === null
-        ? { latest: null, evidence: "no-match: STJ extraordinary (HTML cleaned)" }
-        : {
-            latest: cleanExtra.latest,
-            evidence: `match=stj_extra_clean max=${cleanExtra.latest} matches=${cleanExtra.count}`,
-            matchText: cleanExtra.matchText,
-          },
-  };
-}
 
 function extractCandidateStjDataUrls(pageUrl: string, html: string): string[] {
   const base = new URL(pageUrl);
@@ -540,10 +483,17 @@ async function parseStjV2(params: { stjUrl: string; debug: boolean }): Promise<S
   };
 }
 
+type RobotDetails = {
+  runDay: string;
+  debug: boolean;
+  persisted: boolean;
+  tribunals: Record<string, unknown>;
+};
+
 type RobotRunResult =
   | { ok: true; skipped: true; reason: "ALREADY_RAN_TODAY"; runDay: string; persisted: true }
-  | { ok: true; skipped: false; runDay: string; details: any; persisted: boolean }
-  | { ok: false; skipped: false; runDay: string; errorMessage: string; details: any; persisted: boolean };
+  | { ok: true; skipped: false; runDay: string; details: RobotDetails; persisted: boolean }
+  | { ok: false; skipped: false; runDay: string; errorMessage: string; details: RobotDetails; persisted: boolean };
 
 async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; persist: boolean }): Promise<RobotRunResult> {
   const selected = params.tribunals?.length
@@ -553,12 +503,12 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
   const now = new Date();
   const runDay = isoDateSaoPauloDay(now);
 
-  const details: any = {
-    runDay,
-    debug: Boolean(params.debug),
-    persisted: Boolean(params.persist),
-    tribunals: {},
-  };
+  const details: RobotDetails = {
+  runDay,
+  debug: Boolean(params.debug),
+  persisted: Boolean(params.persist),
+  tribunals: {},
+};
 
   const executeCore = async (clientOrNull: PoolClient | null) => {
     for (const t of selected) {
@@ -605,15 +555,17 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
           }
 
           continue;
-        } catch (e: any) {
-          details.tribunals.STJ = {
-            ok: false,
-            url,
-            error: "STJ_V2_FAILED",
-            cause: String(e?.message ?? e),
-          };
-          continue;
-        }
+        } catch (e: unknown) {
+  const info = normalizeErrorInfo(e);
+  details.tribunals.STJ = {
+    ok: false,
+    url,
+    error: "STJ_V2_FAILED",
+    cause: info.message,
+  };
+  continue;
+}
+
       }
 
       // Demais tribunais: fetch HTML + parse regex
@@ -674,10 +626,10 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
     try {
       await executeCore(null);
       return { ok: true, skipped: false, runDay, details, persisted: false };
-    } catch (e: any) {
-      const msg = String(e?.message ?? e);
-      return { ok: false, skipped: false, runDay, errorMessage: msg, details, persisted: false };
-    }
+    } catch (e: unknown) {
+  const info = normalizeErrorInfo(e);
+  return { ok: false, skipped: false, runDay, errorMessage: info.message, details, persisted: false };
+}
   }
 
   // PROD: DB + guard diário (1x/dia)
@@ -693,11 +645,11 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
       await executeCore(client);
       await finalizeRun(client, run.runId!, "SUCCESS", details);
       return { ok: true, skipped: false, runDay, details, persisted: true };
-    } catch (e: any) {
-      const msg = String(e?.message ?? e);
-      await finalizeRun(client, run.runId!, "FAILED", details, msg);
-      return { ok: false, skipped: false, runDay, errorMessage: msg, details, persisted: true };
-    }
+    } catch (e: unknown) {
+  const info = normalizeErrorInfo(e);
+  await finalizeRun(client, run.runId!, "FAILED", details, info.message);
+  return { ok: false, skipped: false, runDay, errorMessage: info.message, details, persisted: true };
+}
   });
 }
 

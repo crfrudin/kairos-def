@@ -11,6 +11,11 @@ export interface UpsertInformativeFollowUseCase {
   }): Promise<Result<{ upserted: true }>>;
 }
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
 export function createUpsertInformativeFollowUseCase(deps: { tx: ISubjectsTransaction }): UpsertInformativeFollowUseCase {
   return {
     async execute(input) {
@@ -33,8 +38,8 @@ export function createUpsertInformativeFollowUseCase(deps: { tx: ISubjectsTransa
         });
 
         return ok({ upserted: true });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to upsert informative follow.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to upsert informative follow.", { cause: getErrorMessage(e) });
       }
     },
   };

@@ -6,6 +6,10 @@ export interface DeactivateInformativeFollowUseCase {
   execute(input: { userId: UUID; tribunal: Tribunal }): Promise<Result<{ deactivated: true }>>;
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function createDeactivateInformativeFollowUseCase(deps: { tx: ISubjectsTransaction }): DeactivateInformativeFollowUseCase {
   return {
     async execute(input) {
@@ -24,8 +28,8 @@ export function createDeactivateInformativeFollowUseCase(deps: { tx: ISubjectsTr
         });
 
         return ok({ deactivated: true });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to deactivate informative follow.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to deactivate informative follow.", { cause: errorMessage(e) });
       }
     },
   };

@@ -54,43 +54,52 @@ export class FakeAuthRepository implements IAuthRepository {
     return this.handlers.getCurrentUser();
   }
 
-  async loginWithEmailAndPassword(_params: { email: Email; password: Password }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
-    if (!this.handlers.loginWithEmailAndPassword) {
-      return { ok: false, error: { code: 'UNEXPECTED', message: 'Handler not set' } };
-    }
-    return this.handlers.loginWithEmailAndPassword();
-  }
+  async loginWithEmailAndPassword(params: { email: Email; password: Password }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
+  void params;
 
-  async signUpWithEmailAndPassword(_params: { email: Email; password: Password }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
-    if (!this.handlers.signUpWithEmailAndPassword) {
-      return { ok: false, error: { code: 'UNEXPECTED', message: 'Handler not set' } };
-    }
-    return this.handlers.signUpWithEmailAndPassword();
+  if (!this.handlers.loginWithEmailAndPassword) {
+    return { ok: false, error: { code: 'UNEXPECTED', message: 'Handler not set' } };
   }
+  return this.handlers.loginWithEmailAndPassword();
+}
+
+  async signUpWithEmailAndPassword(params: { email: Email; password: Password }): Promise<Result<{ user: AuthUser }, AuthErrorCode>> {
+  void params;
+
+  if (!this.handlers.signUpWithEmailAndPassword) {
+    return { ok: false, error: { code: 'UNEXPECTED', message: 'Handler not set' } };
+  }
+  return this.handlers.signUpWithEmailAndPassword();
+}
+
 
   async logout(): Promise<Result<null, 'UNEXPECTED'>> {
     if (!this.handlers.logout) return { ok: true, data: null };
     return this.handlers.logout();
   }
 
-  async confirmEmail(_params: { token: string }): Promise<Result<null, AuthErrorCode>> {
+  async confirmEmail(params: { token: string }): Promise<Result<null, AuthErrorCode>> {
+      void params;
     if (!this.handlers.confirmEmail) {
       return { ok: false, error: { code: 'UNEXPECTED', message: 'Handler not set' } };
     }
     return this.handlers.confirmEmail();
   }
 
-  async resendEmailConfirmation(_params: { email: Email }): Promise<Result<null, AuthErrorCode>> {
+  async resendEmailConfirmation(params: { email: Email }): Promise<Result<null, AuthErrorCode>> {
+      void params;
     if (!this.handlers.resendEmailConfirmation) return { ok: true, data: null };
     return this.handlers.resendEmailConfirmation();
   }
 
-  async requestPasswordReset(_params: { email: Email }): Promise<Result<null, AuthErrorCode>> {
+  async requestPasswordReset(params: { email: Email }): Promise<Result<null, AuthErrorCode>> {
+      void params;
     if (!this.handlers.requestPasswordReset) return { ok: true, data: null };
     return this.handlers.requestPasswordReset();
   }
 
-  async resetPassword(_params: { token: string; newPassword: Password }): Promise<Result<null, AuthErrorCode>> {
+  async resetPassword(params: { token: string; newPassword: Password }): Promise<Result<null, AuthErrorCode>> {
+      void params;
     if (!this.handlers.resetPassword) return { ok: true, data: null };
     return this.handlers.resetPassword();
   }

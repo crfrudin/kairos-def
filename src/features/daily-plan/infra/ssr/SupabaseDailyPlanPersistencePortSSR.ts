@@ -167,6 +167,7 @@ export class SupabaseDailyPlanPersistencePortSSR implements IDailyPlanPersistenc
    * - Este método só será implementado após identificarmos a persistência oficial do cursor.
    */
   public async updateCycleCursor(_params: { userId: string; nextCursor: number }): Promise<void> {
+      void _params;
     throw new Error(
       'CYCLE_CURSOR_STORAGE_NOT_DEFINED: não existe persistência oficial identificada para cursor do CICLO (FASE 3).'
     );

@@ -1,17 +1,15 @@
-// src/features/subjects/infra/repositories/PgSubjectPriorityOrderRepository.ts
-
-import type { PoolClient } from 'pg';
+import type { PoolClient } from "pg";
 import type {
   ISubjectPriorityOrderRepository,
   SubjectPriorityOrderRow,
   UUID,
   ISOTimestamp,
-} from '@/features/subjects/application/ports/ISubjectPriorityOrderRepository';
+} from "@/features/subjects/application/ports/ISubjectPriorityOrderRepository";
 
-function toIso(ts: any): string {
+function toIso(ts: unknown): string {
   if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === 'string') return new Date(ts).toISOString();
-  return new Date(ts).toISOString();
+  if (typeof ts === "string" || typeof ts === "number") return new Date(ts).toISOString();
+  return new Date(String(ts)).toISOString();
 }
 
 export class PgSubjectPriorityOrderRepository implements ISubjectPriorityOrderRepository {
@@ -42,7 +40,6 @@ export class PgSubjectPriorityOrderRepository implements ISubjectPriorityOrderRe
   async replaceOrder(params: { userId: UUID; orderedSubjectIds: ReadonlyArray<UUID>; now: ISOTimestamp }): Promise<void> {
     const { userId, orderedSubjectIds, now } = params;
 
-    // Substituição integral
     await this.client.query(`delete from public.subject_priority_order where user_id = $1`, [userId]);
 
     let pos = 1;

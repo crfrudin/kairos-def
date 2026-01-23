@@ -40,12 +40,12 @@ function nToString(v: number | null | undefined): string {
   return String(v);
 }
 
-function s(v: any, fallback = ""): string {
+function s(v: unknown, fallback = ""): string {
   const x = String(v ?? "").trim();
   return x ? x : fallback;
 }
 
-function normalizeLawMode(v: any): LawMode {
+function normalizeLawMode(v: unknown): LawMode {
   const x = String(v ?? "").trim();
   return x === "FIXED_ARTICLES_PER_DAY" ? "FIXED_ARTICLES_PER_DAY" : "COUPLED_TO_THEORY";
 }
@@ -62,9 +62,7 @@ export function LawConfigPanel(props: Props) {
   const [readArticles, setReadArticles] = React.useState<string>(nToString(props.defaults?.readArticles ?? 0));
 
   const [lawMode, setLawMode] = React.useState<LawMode>(normalizeLawMode(props.defaults?.lawMode));
-  const [fixedArticlesPerDay, setFixedArticlesPerDay] = React.useState<string>(
-    nToString(props.defaults?.fixedArticlesPerDay ?? null)
-  );
+  const [fixedArticlesPerDay, setFixedArticlesPerDay] = React.useState<string>(nToString(props.defaults?.fixedArticlesPerDay ?? null));
 
   // ✅ Vínculo (UI-only): dropdown separado, não preenche nome da lei.
   const [linkChoice, setLinkChoice] = React.useState<string>(() => {

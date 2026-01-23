@@ -16,6 +16,10 @@ export interface ListInformativeFollowsUseCase {
   execute(input: { userId: UUID }): Promise<Result<{ items: ReadonlyArray<InformativeFollowComputed> }>>;
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Regras:
  * - Se latest=null => status/unread = null (não inventar nada).
@@ -81,8 +85,8 @@ export function createListInformativeFollowsUseCase(deps: { tx: ISubjectsTransac
         });
 
         return ok({ items });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to list informative follows.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to list informative follows.", { cause: errorMessage(e) });
       }
     },
   };

@@ -6,6 +6,10 @@ export interface GetSubjectAggregateUseCase {
   execute(input: { userId: UUID; subjectId: UUID }): Promise<Result<{ aggregate: SubjectAggregateDTO }>>;
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function createGetSubjectAggregateUseCase(deps: { tx: ISubjectsTransaction }): GetSubjectAggregateUseCase {
   return {
     async execute(input) {
@@ -20,8 +24,8 @@ export function createGetSubjectAggregateUseCase(deps: { tx: ISubjectsTransactio
         if (!aggregate) return fail("NOT_FOUND", "Subject not found.");
 
         return ok({ aggregate });
-      } catch (e: any) {
-        return fail("INFRA_ERROR", "Failed to get subject aggregate.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        return fail("INFRA_ERROR", "Failed to get subject aggregate.", { cause: errorMessage(e) });
       }
     },
   };

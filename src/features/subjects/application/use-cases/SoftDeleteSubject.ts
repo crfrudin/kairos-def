@@ -6,6 +6,11 @@ export interface SoftDeleteSubjectUseCase {
   execute(input: { userId: UUID; subjectId: UUID }): Promise<Result<{ deleted: true }>>;
 }
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
 export function createSoftDeleteSubjectUseCase(deps: { tx: ISubjectsTransaction }): SoftDeleteSubjectUseCase {
   return {
     async execute(input) {
@@ -41,9 +46,10 @@ export function createSoftDeleteSubjectUseCase(deps: { tx: ISubjectsTransaction 
         });
 
         return ok({ deleted: true });
-      } catch (e: any) {
-        if (String(e?.message ?? e) === "NOT_FOUND") return fail("NOT_FOUND", "Subject not found.");
-        return fail("INFRA_ERROR", "Failed to soft delete subject.", { cause: String(e?.message ?? e) });
+      } catch (e: unknown) {
+        const msg = getErrorMessage(e);
+        if (msg === "NOT_FOUND") return fail("NOT_FOUND", "Subject not found.");
+        return fail("INFRA_ERROR", "Failed to soft delete subject.", { cause: msg });
       }
     },
   };

@@ -774,8 +774,8 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
               <div className="space-y-3">
                 <Calendar
                   mode="range"
-                  selected={restRange as any}
-                  onSelect={setRestRange as any}
+                  selected={restRange}
+                  onSelect={setRestRange}
                   initialFocus
                 />
               </div>

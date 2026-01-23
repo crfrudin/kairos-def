@@ -64,10 +64,11 @@ describe('AuthOrchestrator (no-break on logging failure)', () => {
     const orchestrator = new AuthOrchestrator({
       authRepo,
       loginUC,
-      signUpUC: {} as any,
-      confirmEmailUC: {} as any,
-      requestPasswordResetUC: {} as any,
-      resetPasswordUC: {} as any,
+        signUpUC: { execute: async (_input: unknown) => { void _input; return err("UNEXPECTED","not used in this test"); } },
+        confirmEmailUC: { execute: async (_input: unknown) => { void _input; return err("UNEXPECTED","not used in this test"); } },
+        requestPasswordResetUC: { execute: async (_input: unknown) => { void _input; return err("UNEXPECTED","not used in this test"); } },
+        resetPasswordUC: { execute: async (_input: unknown) => { void _input; return err("UNEXPECTED","not used in this test"); } },
+
       audit: {
         async log() {
           throw new Error('boom');

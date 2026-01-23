@@ -15,6 +15,7 @@ export function useProfileEditController() {
     data: null as unknown,
     // submit chamará UpdateProfile
     submit: async (_input: unknown) => {
+        void _input;
       return { ok: false, blockingErrors: ['NOT_IMPLEMENTED'] } as const;
     },
   };
