@@ -39,7 +39,8 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: "Conquistas", href: "/conquistas", icon: Trophy, isPlaceholder: true },
   { label: "Assinatura", href: "/assinatura", icon: CreditCard, isPlaceholder: true },
 
-  { label: "Configurações", href: "/configuracoes", icon: Settings },
+  // FASE 6 — Ajustes Administrativos
+  { label: "Ajustes", href: "/ajustes", icon: Settings },
 ] as const;
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {

@@ -35,17 +35,23 @@ function mapDbRowToPrimitives(row: SupabaseProfilesRow): UserAdministrativeProfi
     secondaryEmail: row.secondary_email ?? null,
 
     address:
-      row.cep || row.uf || row.address_city || row.neighborhood || row.street || row.address_number || row.complement
-        ? {
-            cep: row.cep ?? null,
-            uf: row.uf ?? null,
-            city: row.address_city ?? null,
-            neighborhood: row.neighborhood ?? null,
-            street: row.street ?? null,
-            number: row.address_number ?? null,
-            complement: row.complement ?? null,
-          }
-        : null,
+  row.cep ||
+  row.uf ||
+  row.address_city ||
+  row.address_neighborhood ||
+  row.address_street ||
+  row.address_number ||
+  row.address_complement
+    ? {
+        cep: row.cep ?? null,
+        uf: row.uf ?? null,
+        city: row.address_city ?? null,
+        neighborhood: row.address_neighborhood ?? null,
+        street: row.address_street ?? null,
+        number: row.address_number ?? null,
+        complement: row.address_complement ?? null,
+      }
+    : null,
 
     preferences:
       row.preferred_language || row.time_zone || row.communications_consent !== null
@@ -83,13 +89,14 @@ function mapPrimitivesToDbUpdate(input: {
     secondary_email: p.secondaryEmail ?? null,
 
     // Endereço
-    cep: p.address?.cep ?? null,
-    uf: p.address?.uf ?? null,
-    address_city: p.address?.city ?? null,
-    neighborhood: p.address?.neighborhood ?? null,
-    street: p.address?.street ?? null,
-    address_number: p.address?.number ?? null,
-    complement: p.address?.complement ?? null,
+cep: p.address?.cep ?? null,
+uf: p.address?.uf ?? null,
+address_city: p.address?.city ?? null,
+address_neighborhood: p.address?.neighborhood ?? null,
+address_street: p.address?.street ?? null,
+address_number: p.address?.number ?? null,
+address_complement: p.address?.complement ?? null,
+
 
     // Preferências
     preferred_language: p.preferences?.preferredLanguage ?? null,
@@ -109,29 +116,30 @@ export class SupabaseUserAdministrativeProfileRepository implements IUserAdminis
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        [
-          "user_id",
-          "full_name",
-          "social_name",
-          "birth_date",
-          "gender",
-          "gender_other_description",
-          "phone",
-          "secondary_email",
-          "cep",
-          "uf",
-          "address_city",
-          "neighborhood",
-          "street",
-          "address_number",
-          "complement",
-          "preferred_language",
-          "time_zone",
-          "communications_consent",
-          "created_at",
-          "updated_at",
-        ].join(",")
-      )
+  [
+    "user_id",
+    "full_name",
+    "social_name",
+    "birth_date",
+    "gender",
+    "gender_other_description",
+    "phone",
+    "secondary_email",
+    "cep",
+    "uf",
+    "address_city",
+    "address_neighborhood",
+    "address_street",
+    "address_number",
+    "address_complement",
+    "preferred_language",
+    "time_zone",
+    "communications_consent",
+    "created_at",
+    "updated_at",
+  ].join(",")
+)
+
       .eq("user_id", userId)
       .maybeSingle<SupabaseProfilesRow>();
 

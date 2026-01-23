@@ -6,7 +6,7 @@ export type SupabaseProfilesRow = {
   // Identificação
   full_name: string;
   social_name: string | null;
-  birth_date: string | null; // YYYY-MM-DD (date no banco, mas chega como string)
+  birth_date: string | null;
 
   // Gênero
   gender: string | null;
@@ -16,16 +16,14 @@ export type SupabaseProfilesRow = {
   phone: string | null;
   secondary_email: string | null;
 
-  // Endereço (nomes inferidos a partir da constraint existente)
+  // Endereço (COLUNAS — conforme onboarding)
   cep: string | null;
   uf: string | null;
   address_city: string | null;
-
-  // Campos comuns de endereço (muito prováveis na tabela)
-  neighborhood: string | null;
-  street: string | null;
+  address_neighborhood: string | null;
+  address_street: string | null;
   address_number: string | null;
-  complement: string | null;
+  address_complement: string | null;
 
   // Preferências
   preferred_language: string | null;

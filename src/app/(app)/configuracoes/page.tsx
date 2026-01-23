@@ -1,18 +1,11 @@
 import "server-only";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { redirect } from "next/navigation";
 
+/**
+ * Compatibilidade: item antigo do menu.
+ * Fonte de verdade: /ajustes (FASE 6 · ETAPA 5).
+ */
 export default function ConfiguracoesPage() {
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Configurações</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Placeholder visual (sem lógica, sem dados, sem decisões).
-        </CardContent>
-      </Card>
-    </div>
-  );
+  redirect("/ajustes");
 }
