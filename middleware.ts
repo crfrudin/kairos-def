@@ -18,7 +18,9 @@ const EMAIL_UNCONFIRMED_ALLOWED_EXACT = new Set<string>([
   '/onboarding', // fluxo permitido (placeholder)
 ]);
 
-// “dashboard (ou equivalente futuro)”: hoje não existe /dashboard no repo, então usamos /perfil como equivalente real.
+// 🔒 Rotas internas que não podem ser acessadas por ninguém (mesmo autenticado)
+const PRIVATE_ROUTES_PREFIX = ['/robo'];
+
 const AUTHENTICATED_REDIRECT_DEFAULT = '/perfil';
 const EMAIL_UNCONFIRMED_REDIRECT_DEFAULT = '/onboarding';
 
@@ -43,6 +45,10 @@ function isPublicRoute(pathname: string): boolean {
 
 function isAuthPublicRoute(pathname: string): boolean {
   return AUTH_PUBLIC_ROUTES.has(pathname);
+}
+
+function isPrivateRoute(pathname: string): boolean {
+  return PRIVATE_ROUTES_PREFIX.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 function safeRedirect(req: NextRequest, toPath: string): NextResponse {
@@ -73,6 +79,11 @@ export async function middleware(req: NextRequest) {
   // Bypass apenas para recursos internos/estáticos (não são “rotas protegidas”)
   if (isStaticOrInternalPath(pathname)) {
     return NextResponse.next();
+  }
+
+  // 🔒 Bloqueio hard de rotas privadas (ninguém acessa, nem autenticado)
+  if (isPrivateRoute(pathname)) {
+    return safeRedirect(req, '/404');
   }
 
   // Criamos o response “next” para permitir que o SSR helper atualize cookies se necessário.

@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 import { createAuthSsrComposition } from "@/core/composition/auth.ssr.composition";
 
 const GENERIC_RESET_MESSAGE = "Não foi possível redefinir sua senha.";
-const GENERIC_RESET_MESSAGE = "Nao foi possivel redefinir sua senha.";
+
 
 async function getAuthAuditContext(): Promise<{ ip: string | null; userAgent: string | null }> {
   const h = await headers();

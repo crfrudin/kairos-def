@@ -9,6 +9,8 @@ export type InformativeExtraordinaryFollowComputed = {
   isActive: boolean;
 
   latestAvailableNumber: number | null;
+  latestCheckedAt: string | null;
+
   unreadCount: number | null;
   status: "EM_DIA" | "NOVOS" | null;
 };
@@ -49,11 +51,19 @@ export function createListInformativeExtraordinaryFollowsUseCase(deps: {
           const tribunals = Array.from(new Set(follows.map((f) => f.tribunal))) as ExtraordinaryTribunal[];
           const latestRows = await t.informativeLatestExtraRepo.listByTribunals({ tribunals });
 
-          const latestMap = new Map<ExtraordinaryTribunal, number>();
-          for (const r of latestRows) latestMap.set(r.tribunal, r.latestAvailableNumber);
+          const latestMap = new Map<ExtraordinaryTribunal, { latest: number; checkedAt: string }>();
+          for (const r of latestRows) {
+            latestMap.set(r.tribunal, { latest: r.latestAvailableNumber, checkedAt: r.checkedAt });
+          }
 
           return follows.map((f) => {
-            const latest = latestMap.has(f.tribunal) ? (latestMap.get(f.tribunal) as number) : null;
+            const row = latestMap.has(f.tribunal)
+              ? (latestMap.get(f.tribunal) as { latest: number; checkedAt: string })
+              : null;
+
+            const latest = row ? row.latest : null;
+            const latestCheckedAt = row ? row.checkedAt : null;
+
             const { unreadCount, status } = compute({ latest, lastRead: f.lastReadNumber });
 
             return {
@@ -61,6 +71,7 @@ export function createListInformativeExtraordinaryFollowsUseCase(deps: {
               lastReadNumber: f.lastReadNumber,
               isActive: f.isActive,
               latestAvailableNumber: latest,
+              latestCheckedAt,
               unreadCount,
               status,
             } satisfies InformativeExtraordinaryFollowComputed;

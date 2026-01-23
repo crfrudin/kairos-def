@@ -39,7 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { toast } from "sonner";
-import { MoreVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { MoreVertical, Plus, Trash2 } from "lucide-react";
 
 import {
   uc_i01_list,
@@ -50,7 +50,6 @@ import {
   uc_i03_mark_read_up_to_extra,
   uc_i04_remove,
   uc_i04_remove_extra,
-  uc_i05_refresh_latest,
   type InformativeFollowDTO,
   type InformativeExtraFollowDTO,
 } from "@/app/(app)/informativos/actions";
@@ -70,15 +69,71 @@ function parsePlanAuthorization(planAuthorization?: string): "FREE" | "PAID" | "
   return "UNKNOWN";
 }
 
-function statusBadge(status?: "EM_DIA" | "NOVOS" | null, unreadCount?: number | null) {
-  if (!status) return null;
+type UiStatus = "EM_DIA" | "NOVO" | "ATRASADO" | "SEM_DADOS";
 
-  if (status === "EM_DIA") {
-    return <Badge variant="secondary">Em dia</Badge>;
+function computeUiStatus(params: {
+  latestAvailableNumber?: number | null;
+  lastReadNumber: number;
+}): { uiStatus: UiStatus; pendingCount: number | null } {
+  const latest = typeof params.latestAvailableNumber === "number" ? params.latestAvailableNumber : null;
+  const lastRead = params.lastReadNumber;
+
+  if (latest === null) return { uiStatus: "SEM_DADOS", pendingCount: null };
+
+  // Se estiver inconsistente (lastRead > latest), não inventar status visual.
+  if (lastRead > latest) return { uiStatus: "SEM_DADOS", pendingCount: null };
+
+  const delta = latest - lastRead; // >= 0
+  if (delta === 0) return { uiStatus: "EM_DIA", pendingCount: 0 };
+  if (delta === 1) return { uiStatus: "NOVO", pendingCount: 1 };
+  return { uiStatus: "ATRASADO", pendingCount: delta };
+}
+
+function statusBadgeByRule(latestAvailableNumber?: number | null, lastReadNumber?: number) {
+  if (typeof lastReadNumber !== "number") return null;
+
+  const { uiStatus, pendingCount } = computeUiStatus({ latestAvailableNumber, lastReadNumber });
+
+  if (uiStatus === "SEM_DADOS") return null;
+
+  if (uiStatus === "EM_DIA") {
+    return (
+      <Badge className="animate-pulse border border-emerald-200 bg-emerald-100 text-emerald-900">
+        Em dia
+      </Badge>
+    );
   }
 
-  const unread = typeof unreadCount === "number" ? unreadCount : undefined;
-  return <Badge>{typeof unread === "number" ? `Novos: ${unread}` : "Novos"}</Badge>;
+  if (uiStatus === "NOVO") {
+    return (
+      <Badge className="animate-pulse border border-sky-200 bg-sky-100 text-sky-900">
+        Novo{typeof pendingCount === "number" ? `: ${pendingCount}` : ""}
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge className="animate-pulse border border-rose-200 bg-rose-100 text-rose-900">
+      Atrasado{typeof pendingCount === "number" ? `: ${pendingCount}` : ""}
+    </Badge>
+  );
+}
+
+function formatLastUpdatePtBr(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(d);
+}
+
+function maxIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  const da = new Date(a).getTime();
+  const db = new Date(b).getTime();
+  if (!Number.isFinite(da)) return b;
+  if (!Number.isFinite(db)) return a;
+  return db > da ? b : a;
 }
 
 export function InformativosPage({ userId, planAuthorization }: Props) {
@@ -90,8 +145,6 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
 
   const [follows, setFollows] = useState<InformativeFollowDTO[]>([]);
   const [extraFollows, setExtraFollows] = useState<InformativeExtraFollowDTO[]>([]);
-
-  const [refreshing, setRefreshing] = useState(false);
 
   // Add regular (+ extra STJ dentro do mesmo modal)
   const [addOpen, setAddOpen] = useState(false);
@@ -121,6 +174,22 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
 
   const activeExtra = useMemo(() => extraFollows.find((x) => x.isActive) ?? null, [extraFollows]);
   const hasExtraActive = Boolean(activeExtra);
+
+  const lastUpdatedIso = useMemo(() => {
+    let acc: string | null = null;
+
+    for (const f of activeFollows) {
+      acc = maxIso(acc, f.latestCheckedAt ?? null);
+    }
+
+    if (hasExtraActive) {
+      acc = maxIso(acc, activeExtra?.latestCheckedAt ?? null);
+    }
+
+    return acc;
+  }, [activeFollows, hasExtraActive, activeExtra]);
+
+  const lastUpdatedLabel = useMemo(() => formatLastUpdatePtBr(lastUpdatedIso), [lastUpdatedIso]);
 
   async function loadAll() {
     setLoading(true);
@@ -153,21 +222,6 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function onRefresh() {
-    setRefreshing(true);
-    const tribunals = activeFollows.map((f) => f.tribunal) as Tribunal[];
-    const res = await uc_i05_refresh_latest(userId, { tribunals });
-    setRefreshing(false);
-
-    if (!res.ok) {
-      toast.error("Não foi possível atualizar.", { description: res.errorMessage });
-      return;
-    }
-
-    await loadAll();
-    toast.success("Atualizado.", { description: "Números mais recentes sincronizados." });
-  }
-
   async function submitAdd() {
     if (!addTribunal) return;
 
@@ -182,26 +236,26 @@ export function InformativosPage({ userId, planAuthorization }: Props) {
     }
 
     // 2) Extra STJ: se STJ e ainda não ativo, cria SEMPRE (vazio => 0)
-let extraAttempted = false;
-let extraFailedMessage: string | null = null;
+    let extraAttempted = false;
+    let extraFailedMessage: string | null = null;
 
-if (tribunal === "STJ" && !hasExtraActive) {
-  const raw = addExtraLastRead.trim();
-  const extraLastReadNumber = raw === "" ? 0 : Number(raw);
+    if (tribunal === "STJ" && !hasExtraActive) {
+      const raw = addExtraLastRead.trim();
+      const extraLastReadNumber = raw === "" ? 0 : Number(raw);
 
-  if (Number.isNaN(extraLastReadNumber)) {
-    toast.error("Não foi possível adicionar.", {
-      description: "Campo 'Último lido extraordinário' inválido (não é número).",
-    });
-    return;
-  }
+      if (Number.isNaN(extraLastReadNumber)) {
+        toast.error("Não foi possível adicionar.", {
+          description: "Campo 'Último lido extraordinário' inválido (não é número).",
+        });
+        return;
+      }
 
-  extraAttempted = true;
-  const r2 = await uc_i02_add_extra(userId, { lastReadNumber: extraLastReadNumber });
-  if (!r2.ok) {
-    extraFailedMessage = r2.errorMessage;
-  }
-}
+      extraAttempted = true;
+      const r2 = await uc_i02_add_extra(userId, { lastReadNumber: extraLastReadNumber });
+      if (!r2.ok) {
+        extraFailedMessage = r2.errorMessage;
+      }
+    }
 
     setAddOpen(false);
     setAddTribunal("");
@@ -295,16 +349,7 @@ if (tribunal === "STJ" && !hasExtraActive) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={onRefresh}
-              disabled={refreshing || loading || isBlocked || (activeFollows.length === 0 && !hasExtraActive)}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              Atualizar
-            </Button>
-
+          <div className="flex flex-col items-end gap-2">
             {/* Add regular (e STJ extra dentro do modal) */}
             <Dialog open={addOpen} onOpenChange={setAddOpen}>
               <DialogTrigger asChild>
@@ -381,8 +426,8 @@ if (tribunal === "STJ" && !hasExtraActive) {
                         </div>
                       ) : (
                         <div className="text-xs text-muted-foreground">
-  Se deixar vazio, será assumido <span className="font-medium">0</span> (acompanhar desde o início).
-</div>
+                          Se deixar vazio, será assumido <span className="font-medium">0</span> (acompanhar desde o início).
+                        </div>
                       )}
                     </div>
                   ) : null}
@@ -398,6 +443,10 @@ if (tribunal === "STJ" && !hasExtraActive) {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            <div className="text-xs text-muted-foreground">
+              Última atualização: <span className="font-medium">{lastUpdatedLabel ?? "—"}</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -443,11 +492,11 @@ if (tribunal === "STJ" && !hasExtraActive) {
           {/* EXTRA CARD (STJ) */}
           {hasExtraActive ? (
             <Card className={isBlocked ? "opacity-60" : ""}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0">
+              <CardHeader className="flex flex-row items-start justify-between space-y-0 bg-muted/40">
                 <div className="space-y-2">
                   <CardTitle className="text-base">STJ (Extraordinário)</CardTitle>
 
-                  {statusBadge(activeExtra?.status ?? null, activeExtra?.unreadCount ?? null)}
+                  {statusBadgeByRule(activeExtra?.latestAvailableNumber ?? null, activeExtra?.lastReadNumber ?? 0)}
 
                   <div className="text-xs text-muted-foreground">
                     Último lido: <span className="font-medium">{activeExtra?.lastReadNumber ?? 0}</span>
@@ -536,7 +585,7 @@ if (tribunal === "STJ" && !hasExtraActive) {
                 </AlertDialog>
               </CardHeader>
 
-              <CardContent className="pt-0">
+              <CardContent className="pt-4">
                 <div className="text-sm text-muted-foreground">Dica: use “Marcar como lido até…” para atualizar seu número.</div>
               </CardContent>
             </Card>
@@ -545,11 +594,11 @@ if (tribunal === "STJ" && !hasExtraActive) {
           {/* REGULAR CARDS */}
           {activeFollows.map((f) => (
             <Card key={f.tribunal} className={isBlocked ? "opacity-60" : ""}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0">
+              <CardHeader className="flex flex-row items-start justify-between space-y-0 bg-muted/40">
                 <div className="space-y-2">
                   <CardTitle className="text-base">{f.tribunal}</CardTitle>
 
-                  {statusBadge(f.status ?? null, f.unreadCount ?? null)}
+                  {statusBadgeByRule(f.latestAvailableNumber ?? null, f.lastReadNumber)}
 
                   <div className="text-xs text-muted-foreground">
                     Último lido: <span className="font-medium">{f.lastReadNumber}</span>
@@ -611,7 +660,10 @@ if (tribunal === "STJ" && !hasExtraActive) {
                       <Button variant="outline" onClick={() => setMarkOpenFor(null)}>
                         Cancelar
                       </Button>
-                      <Button onClick={() => submitMarkReadUpTo(f.tribunal)} disabled={markValue.trim() === "" || Number.isNaN(Number(markValue))}>
+                      <Button
+                        onClick={() => submitMarkReadUpTo(f.tribunal)}
+                        disabled={markValue.trim() === "" || Number.isNaN(Number(markValue))}
+                      >
                         Salvar
                       </Button>
                     </DialogFooter>
@@ -638,7 +690,7 @@ if (tribunal === "STJ" && !hasExtraActive) {
                 </AlertDialog>
               </CardHeader>
 
-              <CardContent className="pt-0">
+              <CardContent className="pt-4">
                 <div className="text-sm text-muted-foreground">Dica: use “Marcar como lido até…” para atualizar seu número.</div>
               </CardContent>
             </Card>
