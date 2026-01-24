@@ -1,22 +1,14 @@
-import type { Subscription } from '../../domain';
-import type { PlanTier } from '../contracts/SubscriptionEntitlements';
+import { Subscription } from '../../domain';
 
 export interface ISubscriptionRepository {
   /**
-   * Retorna a Subscription do usuário ou null se não existir.
-   * Observação: ausência de registro NÃO é erro normativo; o UC tratará como FREE efetivo.
+   * Não presume existência: se não existir, cria FREE (no repositório/fake),
+   * sem IO real aqui (infra virá na Etapa 3).
    */
-  getByUserId(userId: string): Promise<Subscription | null>;
+  getOrCreateForUser(userId: string): Promise<Subscription>;
 
   /**
-   * Persistência da Subscription atual (upsert).
-   * A infra concreta (Etapa 3) decide atomicidade/tx, sem vazar para Application.
+   * Persistência da Subscription do usuário.
    */
   save(userId: string, subscription: Subscription): Promise<void>;
-
-  /**
-   * Leitura rápida do plano efetivo, quando não for necessário materializar a entidade inteira.
-   * Implementação pode derivar de getByUserId, mas fica como port para otimização/isolamento.
-   */
-  getPlanTier(userId: string): Promise<PlanTier>;
 }

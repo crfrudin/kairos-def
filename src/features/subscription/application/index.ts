@@ -1,4 +1,13 @@
-export type { SubscriptionEntitlements, PlanTier } from './contracts/SubscriptionEntitlements';
+export * from './_shared/Result';
 
-export type { ISubscriptionRepository } from './ports/ISubscriptionRepository';
-export type { ISubscriptionEntitlementsReader } from './ports/ISubscriptionEntitlementsReader';
+export * from './dtos/SubscriptionStatusDTO';
+export * from './contracts/SubscriptionResult';
+
+export * from './errors/SubscriptionErrors';
+
+export * from './ports/ISubscriptionRepository';
+
+export * from './use-cases/GetSubscriptionStatus';
+export * from './use-cases/UpgradeToPremium';
+export * from './use-cases/ScheduleCancellation';
+export * from './use-cases/ReactivateSubscription';
