@@ -6,6 +6,8 @@ import { Phone } from "../value-objects/Phone";
 import { SecondaryEmail } from "../value-objects/SecondaryEmail";
 import { Address, type AddressInput } from "../value-objects/Address";
 import { AdminPreferences, type AdminPreferencesInput } from "../value-objects/AdminPreferences";
+import { Cpf } from "../value-objects/Cpf";
+import { ValidatedAddress, type ValidatedAddressInput } from "../value-objects/ValidatedAddress";
 
 export type UserAdministrativeProfilePrimitives = {
   fullName: string;
@@ -18,14 +20,19 @@ export type UserAdministrativeProfilePrimitives = {
   phone?: string | null; // digits-only
   secondaryEmail?: string | null;
 
+  // FASE 6 (já existente)
   address?: AddressInput | null;
   preferences?: AdminPreferencesInput | null;
+
+  // FASE 9 (novo)
+  cpf?: string | null; // digits-only (11)
+  validatedAddress?: ValidatedAddressInput | null;
 };
 
 /**
- * Agregado canônico da Fase 6:
+ * Agregado canônico:
  * - Passivo
- * - Não-decisório
+ * - Não-decisório (não define "completude")
  * - Sem IO / sem Auth / sem Planejamento / sem Monetização
  */
 export class UserAdministrativeProfile {
@@ -41,6 +48,10 @@ export class UserAdministrativeProfile {
   private readonly _address: Address | null;
   private readonly _preferences: AdminPreferences | null;
 
+  // FASE 9
+  private readonly _cpf: Cpf | null;
+  private readonly _validatedAddress: ValidatedAddress | null;
+
   private constructor(props: {
     fullName: FullName;
     socialName: SocialName | null;
@@ -50,6 +61,8 @@ export class UserAdministrativeProfile {
     secondaryEmail: SecondaryEmail | null;
     address: Address | null;
     preferences: AdminPreferences | null;
+    cpf: Cpf | null;
+    validatedAddress: ValidatedAddress | null;
   }) {
     this._fullName = props.fullName;
     this._socialName = props.socialName;
@@ -59,6 +72,8 @@ export class UserAdministrativeProfile {
     this._secondaryEmail = props.secondaryEmail;
     this._address = props.address;
     this._preferences = props.preferences;
+    this._cpf = props.cpf;
+    this._validatedAddress = props.validatedAddress;
   }
 
   public static create(input: UserAdministrativeProfilePrimitives): UserAdministrativeProfile {
@@ -75,6 +90,10 @@ export class UserAdministrativeProfile {
     const address = Address.create(input.address ?? null);
     const preferences = AdminPreferences.create(input.preferences ?? null);
 
+    // FASE 9 (novo)
+    const cpf = Cpf.create(input.cpf ?? null);
+    const validatedAddress = ValidatedAddress.create(input.validatedAddress ?? null);
+
     return new UserAdministrativeProfile({
       fullName,
       socialName,
@@ -84,6 +103,8 @@ export class UserAdministrativeProfile {
       secondaryEmail,
       address,
       preferences,
+      cpf,
+      validatedAddress,
     });
   }
 
@@ -96,6 +117,10 @@ export class UserAdministrativeProfile {
   public get secondaryEmail(): SecondaryEmail | null { return this._secondaryEmail; }
   public get address(): Address | null { return this._address; }
   public get preferences(): AdminPreferences | null { return this._preferences; }
+
+  // FASE 9
+  public get cpf(): Cpf | null { return this._cpf; }
+  public get validatedAddress(): ValidatedAddress | null { return this._validatedAddress; }
 
   public toPrimitives(): UserAdministrativeProfilePrimitives {
     const genderPrimitives = this._gender ? this._gender.toPrimitives() : null;
@@ -111,6 +136,10 @@ export class UserAdministrativeProfile {
       secondaryEmail: this._secondaryEmail?.value ?? null,
       address: this._address?.toPrimitives() ?? null,
       preferences: this._preferences?.toPrimitives() ?? null,
+
+      // FASE 9
+      cpf: this._cpf?.digits ?? null,
+      validatedAddress: this._validatedAddress?.toPrimitives() ?? null,
     };
   }
 }
