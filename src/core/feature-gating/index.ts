@@ -1,1 +1,3 @@
-export * from "./featureGating.shared";
+export type { FeatureGatingSnapshot, FeatureGatingResult } from "./featureGating";
+
+export { getFeatureGatingSnapshot, isFeatureEnabled, requireFeature } from "./featureGating";
