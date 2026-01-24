@@ -15,15 +15,15 @@ export class Cpf {
     if (digits.length === 0) return null;
 
     if (digits.length !== 11) {
-      throw new DomainValidationError("CPF inválido: deve conter 11 dígitos.");
+      throw new DomainValidationError("CPF_INVALID_LENGTH", "CPF inválido: deve conter 11 dígitos.");
     }
 
     if (Cpf.isAllSameDigit(digits)) {
-      throw new DomainValidationError("CPF inválido: sequência inválida.");
+      throw new DomainValidationError("CPF_INVALID_SEQUENCE", "CPF inválido: sequência inválida.");
     }
 
     if (!Cpf.hasValidCheckDigits(digits)) {
-      throw new DomainValidationError("CPF inválido: dígitos verificadores inválidos.");
+      throw new DomainValidationError("CPF_INVALID_CHECK_DIGITS", "CPF inválido: dígitos verificadores inválidos.");
     }
 
     return new Cpf(digits);

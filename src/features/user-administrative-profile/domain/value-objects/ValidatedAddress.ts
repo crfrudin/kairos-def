@@ -22,12 +22,12 @@ export class ValidatedAddress {
 
     // Para ser "validated", exigimos todos os componentes administrativos essenciais.
     // (Complemento é opcional)
-    if (!p.cep) throw new DomainValidationError("Endereço validado inválido: CEP é obrigatório.");
-    if (!p.uf) throw new DomainValidationError("Endereço validado inválido: UF é obrigatória.");
-    if (!p.city) throw new DomainValidationError("Endereço validado inválido: Município é obrigatório.");
-    if (!p.street) throw new DomainValidationError("Endereço validado inválido: Logradouro é obrigatório.");
-    if (!p.number) throw new DomainValidationError("Endereço validado inválido: Número é obrigatório.");
-    if (!p.neighborhood) throw new DomainValidationError("Endereço validado inválido: Bairro é obrigatório.");
+    if (!p.cep) throw new DomainValidationError("VALIDATED_ADDRESS_CEP_REQUIRED", "Endereço validado inválido: CEP é obrigatório.");
+    if (!p.uf) throw new DomainValidationError("VALIDATED_ADDRESS_UF_REQUIRED", "Endereço validado inválido: UF é obrigatória.");
+    if (!p.city) throw new DomainValidationError("VALIDATED_ADDRESS_CITY_REQUIRED", "Endereço validado inválido: Município é obrigatório.");
+    if (!p.street) throw new DomainValidationError("VALIDATED_ADDRESS_STREET_REQUIRED", "Endereço validado inválido: Logradouro é obrigatório.");
+    if (!p.number) throw new DomainValidationError("VALIDATED_ADDRESS_NUMBER_REQUIRED", "Endereço validado inválido: Número é obrigatório.");
+    if (!p.neighborhood) throw new DomainValidationError("VALIDATED_ADDRESS_NEIGHBORHOOD_REQUIRED", "Endereço validado inválido: Bairro é obrigatório.");
 
     return new ValidatedAddress(address);
   }
