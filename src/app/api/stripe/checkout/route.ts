@@ -92,8 +92,16 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
+
+      // ✅ Regra 2.7 (governança): userId deve estar no evento sem lookup.
       client_reference_id: userId,
       metadata: { userId, source: "kairos", billingPeriod },
+
+      // ✅ userId também no Subscription (customer.subscription.*)
+      subscription_data: {
+        metadata: { userId, source: "kairos" },
+      },
+
       success_url: `${baseUrl}/assinatura?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/assinatura?checkout=cancelled`,
     });
