@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Suspense } from "react";
-
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";

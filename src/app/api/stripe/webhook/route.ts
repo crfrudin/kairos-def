@@ -145,11 +145,11 @@ export async function POST(req: Request) {
         return badRequest("USER_ID_MISSING: customer.subscription.updated missing subscription.metadata.userId");
       }
 
-      const cancelAtPeriodEnd = Boolean((sub as any).cancel_at_period_end);
+      const cancelAtPeriodEnd = ((sub as unknown as { cancel_at_period_end?: unknown }).cancel_at_period_end === true);
 
       if (cancelAtPeriodEnd) {
         // ✅ defensivo: tipagem do SDK no seu build não expõe current_period_end
-        const currentPeriodEnd = Number((sub as any).current_period_end ?? 0);
+        const currentPeriodEnd = (() => { const v = (sub as unknown as { current_period_end?: unknown }).current_period_end; return typeof v === "number" && Number.isFinite(v) ? v : 0; })();
         if (!currentPeriodEnd) {
           return badRequest("PERIOD_END_MISSING: subscription.current_period_end missing");
         }

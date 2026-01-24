@@ -12,9 +12,7 @@ export default function EstatisticasPlaceholderPage() {
       <Card>
         <CardHeader>
           <CardTitle>Funcionalidade futura</CardTitle>
-          <CardDescription>
-            Esta área será ativada em uma fase futura (Fase 4 — Estatísticas).
-          </CardDescription>
+          <CardDescription>Esta área será ativada em uma fase futura (Fase 4 — Estatísticas).</CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           Placeholder estritamente informativo. Nenhum dado é consumido e nenhuma regra de negócio é aplicada aqui.

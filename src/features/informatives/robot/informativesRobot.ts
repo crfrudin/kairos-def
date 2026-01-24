@@ -265,8 +265,7 @@ async function probeUrlExists(params: { url: string; timeoutMs: number }): Promi
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         accept: "*/*",
       },
-    } as any);
-
+    } as RequestInit & { dispatcher?: unknown });
     if (head.status === 200) return { ok: true, exists: true, status: head.status, finalUrl: head.url };
     if (head.status === 404) return { ok: true, exists: false, status: head.status, finalUrl: head.url };
 
@@ -283,8 +282,7 @@ async function probeUrlExists(params: { url: string; timeoutMs: number }): Promi
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         accept: "application/pdf,*/*",
       },
-    } as any);
-
+    } as RequestInit & { dispatcher?: unknown });
     // 206 = Partial Content (ok), 200 = ok
     if (get.status === 200 || get.status === 206) return { ok: true, exists: true, status: get.status, finalUrl: get.url };
     if (get.status === 404) return { ok: true, exists: false, status: get.status, finalUrl: get.url };
@@ -315,7 +313,7 @@ async function findLatestStfByPdf(params: { timeoutMs: number; debug: boolean })
   const tried: Array<{ url: string; status: number | null }> = [];
 
   // chute inicial para reduzir chamadas
-  let start = 1000;
+  const start = 1000;
 
   const p0 = await probeUrlExists({ url: stfPdfUrl(start), timeoutMs: params.timeoutMs });
   tried.push({ url: stfPdfUrl(start), status: p0.ok ? p0.status : null });
@@ -773,6 +771,17 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
         continue;
       }
 
+      function setHtmlPreview(target: unknown, htmlPreview: string): void {
+
+        if (!target || typeof target !== "object") return;
+
+        const t = target as Record<string, unknown>;
+
+        t.htmlPreview = htmlPreview;
+
+      }
+
+
       // STJ V2
       if (t.tribunal === "STJ") {
         try {
@@ -793,7 +802,7 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
           if (params.debug) {
             const pageRes = await fetchHtml({ url, timeoutMs: 15000 });
             if (pageRes.ok && pageRes.httpStatus >= 200 && pageRes.httpStatus < 300) {
-              (details.tribunals.STJ as any).htmlPreview = safeSlice(pageRes.text, 2000);
+              setHtmlPreview(details.tribunals.STJ, safeSlice(pageRes.text, 2000));
             }
           }
 
@@ -845,7 +854,7 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
           extracted: extracted.evidence,
           matchText: extracted.matchText ?? null,
         };
-        if (params.debug) (details.tribunals[t.tribunal] as any).htmlPreview = safeSlice(html, 2500);
+        if (params.debug) setHtmlPreview(details.tribunals[t.tribunal], safeSlice(html, 2500));
         continue;
       }
 
@@ -864,7 +873,7 @@ async function runRobotOnce(params: { tribunals?: Tribunal[]; debug?: boolean; p
         year: extracted.year ?? undefined,
       };
 
-      if (params.debug) (details.tribunals[t.tribunal] as any).htmlPreview = safeSlice(html, 2500);
+      if (params.debug) setHtmlPreview(details.tribunals[t.tribunal], safeSlice(html, 2500));
     }
   };
 

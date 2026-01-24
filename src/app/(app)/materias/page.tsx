@@ -2,13 +2,16 @@ import "server-only";
 
 import Link from "next/link";
 import { headers } from "next/headers";
-import type { UrlObject } from 'url'; // ← Adicionado para tipagem segura do href dinâmico
+import type { UrlObject } from "url";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import { createSubjectsSsrComposition } from "@/core/composition/subjects.ssr.composition";
+import { getFeatureGatingSnapshot } from "@/core/feature-gating";
+
 import { softDeleteMateriaAction } from "./actions";
 import { SubjectOrderEditor } from "./ordem/SubjectOrderEditor";
 
@@ -25,31 +28,87 @@ function AuthFail() {
   );
 }
 
+function SubscriptionUnavailable(props: { title: string; description: string }) {
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <Card>
+        <CardContent className="p-6 space-y-3">
+          <div className="text-lg font-semibold">{props.title}</div>
+          <div className="text-sm text-muted-foreground">{props.description}</div>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline">
+              <Link href="/dashboard">Voltar</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default async function MateriasPage() {
   const h = await headers();
   const userId = h.get("x-kairos-user-id") ?? "";
   if (!userId) return <AuthFail />;
 
+  const gating = await getFeatureGatingSnapshot(userId);
+  if (!gating.ok) {
+    return (
+      <SubscriptionUnavailable
+        title="Matérias"
+        description="Não foi possível carregar o status da assinatura no momento. Tente novamente."
+      />
+    );
+  }
+
+  // Matérias básicas sempre existem no FREE (SUBJECTS_BASIC), então não bloqueamos a página.
+  // Aqui aplicamos apenas o limite quantitativo (maxActiveSubjects) na criação de novas matérias.
   const { listSubjectsMinimalUseCase } = createSubjectsSsrComposition({ userId });
   const res = await listSubjectsMinimalUseCase.execute({ userId });
 
   const items = res.ok ? res.value.items : [];
 
+  const activeCount = items.filter((it) => it.isActive).length;
+
+  const max = gating.snapshot.maxActiveSubjects;
+  const canCreateNewActiveSubject = max.kind === "UNLIMITED" ? true : activeCount < max.value;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <Card>
         <CardContent className="flex items-start justify-between gap-4 p-6">
-          <div>
-            <div className="text-lg font-semibold">Matérias</div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold">Matérias</div>
+              {max.kind === "LIMITED" ? (
+                <Badge variant="outline" title="Limite de matérias ativas no plano atual">
+                  Ativas: {activeCount}/{max.value}
+                </Badge>
+              ) : (
+                <Badge variant="outline">Ativas: {activeCount}/∞</Badge>
+              )}
+            </div>
+
             <div className="text-sm text-muted-foreground">
               Lista, cria, edita e soft delete. A ordem exibida respeita a prioridade salva (quando existir).
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Button asChild>
-              <Link href="/materias/nova">Nova matéria</Link>
-            </Button>
+            {canCreateNewActiveSubject ? (
+              <Button asChild>
+                <Link href="/materias/nova">Nova matéria</Link>
+              </Button>
+            ) : (
+              <>
+                <Button disabled aria-disabled="true" title="Limite do plano atingido">
+                  Nova matéria
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/assinatura">Ver planos</Link>
+                </Button>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -87,10 +146,7 @@ export default async function MateriasPage() {
                 items.map((it) => (
                   <TableRow key={it.id}>
                     <TableCell className="font-medium">
-                      <Link 
-                        className="underline underline-offset-4" 
-                        href={`/materias/${it.id}` as string | UrlObject}
-                      >
+                      <Link className="underline underline-offset-4" href={`/materias/${it.id}` as string | UrlObject}>
                         {it.name}
                       </Link>
                     </TableCell>
