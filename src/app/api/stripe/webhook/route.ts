@@ -99,6 +99,13 @@ export async function POST(req: Request) {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
 
+      // Hardening: só processar checkout de assinatura
+      const mode = (session.mode ?? "").toString();
+      if (mode !== "subscription") {
+        return ok({ received: true, ignored: true, reason: "NOT_SUBSCRIPTION_MODE", type: event.type, eventId: event.id, mode });
+      }
+
+
       const userId = extractUserIdFromCheckoutSession(session);
       if (!userId) {
         return badRequest("USER_ID_MISSING: checkout.session.completed missing client_reference_id/metadata.userId");
