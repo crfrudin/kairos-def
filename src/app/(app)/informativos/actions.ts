@@ -11,7 +11,10 @@ export type InformativeFollowDTO = {
   tribunal: Tribunal;
   lastReadNumber: number;
   isActive: boolean;
+
   latestAvailableNumber?: number | null;
+  latestCheckedAt?: string | null;
+
   unreadCount?: number | null;
   status?: "EM_DIA" | "NOVOS" | null;
 };
@@ -21,7 +24,10 @@ export type InformativeExtraFollowDTO = {
   tribunal: "STJ";
   lastReadNumber: number;
   isActive: boolean;
+
   latestAvailableNumber?: number | null;
+  latestCheckedAt?: string | null;
+
   unreadCount?: number | null;
   status?: "EM_DIA" | "NOVOS" | null;
 };
@@ -52,6 +58,10 @@ function toNumberOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function toStringOrNull(v: unknown): string | null {
+  return typeof v === "string" && v.trim() !== "" ? v : null;
+}
+
 function extractItemsFromUseCaseResult(res: unknown): ReadonlyArray<unknown> {
   if (!isRecord(res)) return [];
   const value = res["value"];
@@ -76,6 +86,7 @@ function mapFollowComputedToDto(x: unknown): InformativeFollowDTO | null {
     lastReadNumber,
     isActive,
     latestAvailableNumber: toNumberOrNull(x["latestAvailableNumber"]),
+    latestCheckedAt: toStringOrNull(x["latestCheckedAt"]),
     unreadCount: toNumberOrNull(x["unreadCount"]),
     status: (typeof x["status"] === "string" ? x["status"] : null) as "EM_DIA" | "NOVOS" | null,
   };
@@ -97,6 +108,7 @@ function mapExtraFollowComputedToDto(x: unknown): InformativeExtraFollowDTO | nu
     lastReadNumber,
     isActive,
     latestAvailableNumber: toNumberOrNull(x["latestAvailableNumber"]),
+    latestCheckedAt: toStringOrNull(x["latestCheckedAt"]),
     unreadCount: toNumberOrNull(x["unreadCount"]),
     status: (typeof x["status"] === "string" ? x["status"] : null) as "EM_DIA" | "NOVOS" | null,
   };
@@ -276,7 +288,8 @@ export async function uc_i04_remove_extra(_userIdFromClient: string): Promise<Re
 }
 
 /**
- * Refresh (robô) — roda, e a UI recarrega REGULAR e EXTRA separadamente.
+ * Mantido (interno): refresh manual não será exposto na UI de /informativos.
+ * Útil para rota interna /robo e/ou debug operacional.
  */
 export async function uc_i05_refresh_latest(
   _userIdFromClient: string,

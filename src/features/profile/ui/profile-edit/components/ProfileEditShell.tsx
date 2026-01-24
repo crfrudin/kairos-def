@@ -20,6 +20,8 @@ import {
 
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
+import type { DateRange } from "react-day-picker";
+
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -219,6 +221,7 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
   const router = useRouter();
 
   const [contractJson, setContractJson] = React.useState(props.initialContractJson);
+
   const parsed = React.useMemo(() => tryParseContract(contractJson), [contractJson]);
   const hasContract = parsed.ok;
 
@@ -323,6 +326,7 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
    */
   const [confirmApplyUi, setConfirmApplyUi] = React.useState(false);
 
+
   /**
    * Releitura pós-save:
    * - Ao salvar com sucesso, fazemos router.refresh() para reexecutar SSR (loadProfileAction).
@@ -330,6 +334,7 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
    * - NÃO sobrescrevemos edição do usuário em momentos arbitrários: só quando o refresh foi provocado por save ok.
    */
   const [pendingServerSync, setPendingServerSync] = React.useState(false);
+
 
   React.useEffect(() => {
     if (state.ok) {
@@ -354,7 +359,9 @@ export function ProfileEditShell(props: { initialContractJson: string; authStatu
 
   // ===== Rest Periods Modal (UI-only) =====
   const [restDialogOpen, setRestDialogOpen] = React.useState(false);
-  const [restRange, setRestRange] = React.useState<{ from?: Date; to?: Date } | undefined>(undefined);
+  const [restRange, setRestRange] = React.useState<DateRange | undefined>(undefined);
+
+
 
   function openRestDialog() {
     setRestRange(undefined);
