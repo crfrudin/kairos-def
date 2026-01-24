@@ -48,6 +48,14 @@ function extractUserIdFromSubscription(sub: Stripe.Subscription): string {
   return "";
 }
 
+function serializeSubscriptionFailure(err: unknown): { type: string; message?: string } {
+  if (!err || typeof err !== "object") return { type: "UNKNOWN" };
+  const e = err as { type?: unknown; message?: unknown };
+  const type = typeof e.type === "string" ? e.type : "UNKNOWN";
+  const message = typeof e.message === "string" ? e.message : undefined;
+  return message ? { type, message } : { type };
+}
+
 export async function POST(req: Request) {
   const secretKey = process.env.STRIPE_SECRET_KEY ?? "";
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
@@ -115,7 +123,7 @@ export async function POST(req: Request) {
           type: event.type,
           eventId: event.id,
           result: "error",
-          code: res.error.code,
+          failure: serializeSubscriptionFailure(res.error),
         });
       }
 
@@ -160,7 +168,7 @@ export async function POST(req: Request) {
             type: event.type,
             eventId: event.id,
             result: "error",
-            code: res.error.code,
+            failure: serializeSubscriptionFailure(res.error),
           });
         }
 
@@ -186,7 +194,7 @@ export async function POST(req: Request) {
           type: event.type,
           eventId: event.id,
           result: "error",
-          code: res.error.code,
+          failure: serializeSubscriptionFailure(res.error),
         });
       }
 
