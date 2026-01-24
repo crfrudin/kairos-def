@@ -24,6 +24,14 @@ const PRIVATE_ROUTES_PREFIX = ['/robo'];
 const AUTHENTICATED_REDIRECT_DEFAULT = '/perfil';
 const EMAIL_UNCONFIRMED_REDIRECT_DEFAULT = '/onboarding';
 
+// ✅ BYPASS CIRÚRGICO (OPÇÃO 2 — GOVERNANÇA)
+// Rotas de integração externa que NÃO devem passar por auth/cookies/claims.
+// Essas rotas devem ser seguras por validação própria (ex.: Stripe-Signature no handler).
+const STRIPE_BYPASS_ROUTES_EXACT = new Set<string>([
+  '/api/stripe/webhook',
+  '/api/stripe/checkout',
+]);
+
 function isStaticOrInternalPath(pathname: string): boolean {
   if (pathname.startsWith('/_next/')) return true;
   if (pathname.startsWith('/favicon.ico')) return true;
@@ -36,6 +44,16 @@ function isStaticOrInternalPath(pathname: string): boolean {
   if (pathname.startsWith('/icons/')) return true;
   if (pathname.startsWith('/fonts/')) return true;
 
+  return false;
+}
+
+function isStripeBypassRoute(pathname: string): boolean {
+  // Aceita também trailing slash/subpath sob o mesmo prefixo, sem abrir superfície fora do escopo.
+  // Ex.: '/api/stripe/webhook/' ou '/api/stripe/webhook/...' (se algum dia existir)
+  for (const base of STRIPE_BYPASS_ROUTES_EXACT) {
+    if (pathname === base) return true;
+    if (pathname.startsWith(`${base}/`)) return true;
+  }
   return false;
 }
 
@@ -78,6 +96,13 @@ export async function middleware(req: NextRequest) {
 
   // Bypass apenas para recursos internos/estáticos (não são “rotas protegidas”)
   if (isStaticOrInternalPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // ✅ BYPASS Stripe (OPÇÃO 2 — GOVERNANÇA)
+  // Não calcula claims, não injeta headers, não redireciona.
+  // Segurança ocorre no handler (ex.: verificação Stripe-Signature).
+  if (isStripeBypassRoute(pathname)) {
     return NextResponse.next();
   }
 
