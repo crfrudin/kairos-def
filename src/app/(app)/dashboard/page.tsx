@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+import { FreePlanBanner } from "@/components/premium/FreePlanBanner";
+
 import { ProfileStatusCard } from "@/app/(app)/dashboard/components/ProfileStatusCard";
 import { DailyGoalStatusCard } from "@/app/(app)/dashboard/components/DailyGoalStatusCard";
 import { AuthStatusCard } from "@/app/(app)/dashboard/components/AuthStatusCard";
@@ -50,6 +52,9 @@ function FuturePlaceholderCard(props: { title: string; description: string; href
 export default function DashboardPage() {
   return (
     <div className="space-y-6">
+      {/* Banner de comunicação de plano (UX/CTA) — UI passiva */}
+      <FreePlanBanner />
+
       <div className="grid gap-6 md:grid-cols-2">
         <Suspense fallback={<CardSkeleton title="Perfil" />}>
           <ProfileStatusCard />

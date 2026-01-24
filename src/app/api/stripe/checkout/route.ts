@@ -5,6 +5,9 @@ import Stripe from "stripe";
 
 import { createSupabaseServerClient } from "@/core/clients/createSupabaseServerClient";
 
+import { SupabaseUserAdministrativeProfileRepository } from "@/features/user-administrative-profile/infra/SupabaseUserAdministrativeProfileRepository";
+import { CheckUserAdministrativeProfileCompletenessUseCase } from "@/features/user-administrative-profile/application/use-cases/CheckUserAdministrativeProfileCompletenessUseCase";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -66,6 +69,24 @@ function parseBillingPeriod(body: unknown): BillingPeriod {
   return raw;
 }
 
+async function ensureAdministrativeProfileComplete(userId: string): Promise<{ ok: true } | { ok: false; validation?: unknown }> {
+  const repo = new SupabaseUserAdministrativeProfileRepository();
+  const uc = new CheckUserAdministrativeProfileCompletenessUseCase(repo);
+
+  const res = await uc.execute({ userId });
+
+  if (!res.ok) {
+    // Infra/Unexpected do UC (não é "incompleto"; é falha técnica)
+    throw new Error(`UAP_COMPLETENESS_FAILED: ${res.error.code}`);
+  }
+
+  if (!res.data.exists || !res.data.isComplete) {
+    return { ok: false, validation: res.data.validation ?? null };
+  }
+
+  return { ok: true };
+}
+
 export async function POST(req: Request) {
   try {
     enforceSameOrigin(req);
@@ -82,8 +103,19 @@ export async function POST(req: Request) {
 
     const billingPeriod = parseBillingPeriod(body);
 
-    // ✅ Auth por cookie (não depende de middleware / headers x-kairos-*)
+    // ✅ Auth por cookie
     const userId = await requireUserIdFromCookies();
+
+    // ✅ Gate fiscal/administrativo (Fase 6): sem inferência normativa nova
+    const completeness = await ensureAdministrativeProfileComplete(userId);
+    if (!completeness.ok) {
+      const isDev = process.env.NODE_ENV !== "production";
+      return json(422, {
+        ok: false,
+        error: "BILLING_PROFILE_INCOMPLETE",
+        ...(isDev ? { validation: completeness.validation ?? null } : {}),
+      });
+    }
 
     const priceId = billingPeriod === "MONTHLY" ? monthlyPriceId : annualPriceId;
 
@@ -111,14 +143,21 @@ export async function POST(req: Request) {
     return json(200, { ok: true, url: session.url });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "UNEXPECTED";
+    const isDev = process.env.NODE_ENV !== "production";
 
     if (msg.startsWith("AUTH_REQUIRED")) return json(401, { ok: false, error: "AUTH_REQUIRED" });
     if (msg.startsWith("CSRF_BLOCKED")) return json(403, { ok: false, error: "FORBIDDEN" });
     if (msg.startsWith("INVALID_BODY")) return json(400, { ok: false, error: "BAD_REQUEST" });
+
     if (msg.startsWith("ENV_MISSING") || msg.startsWith("BASE_URL_MISSING")) {
-      return json(500, { ok: false, error: "SERVER_MISCONFIGURED" });
+      return json(500, { ok: false, error: "SERVER_MISCONFIGURED", ...(isDev ? { debug: msg } : {}) });
     }
 
-    return json(500, { ok: false, error: "UNEXPECTED" });
+    // Se o UC falhou tecnicamente, não é "cadastro incompleto": é erro interno
+    if (msg.startsWith("UAP_COMPLETENESS_FAILED")) {
+      return json(500, { ok: false, error: "UNEXPECTED", ...(isDev ? { debug: msg } : {}) });
+    }
+
+    return json(500, { ok: false, error: "UNEXPECTED", ...(isDev ? { debug: msg } : {}) });
   }
 }

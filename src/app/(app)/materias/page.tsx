@@ -4,6 +4,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import type { UrlObject } from "url";
 
+import { Lock } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +34,7 @@ function SubscriptionUnavailable(props: { title: string; description: string }) 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <Card>
-        <CardContent className="p-6 space-y-3">
+        <CardContent className="space-y-3 p-6">
           <div className="text-lg font-semibold">{props.title}</div>
           <div className="text-sm text-muted-foreground">{props.description}</div>
           <div className="flex items-center gap-2">
@@ -67,7 +69,6 @@ export default async function MateriasPage() {
   const res = await listSubjectsMinimalUseCase.execute({ userId });
 
   const items = res.ok ? res.value.items : [];
-
   const activeCount = items.filter((it) => it.isActive).length;
 
   const max = gating.snapshot.maxActiveSubjects;
@@ -80,12 +81,15 @@ export default async function MateriasPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <div className="text-lg font-semibold">Matérias</div>
+
               {max.kind === "LIMITED" ? (
                 <Badge variant="outline" title="Limite de matérias ativas no plano atual">
                   Ativas: {activeCount}/{max.value}
                 </Badge>
               ) : (
-                <Badge variant="outline">Ativas: {activeCount}/∞</Badge>
+                <Badge variant="outline" title="Sem limite de matérias ativas no plano atual">
+                  Ativas: {activeCount}/∞
+                </Badge>
               )}
             </div>
 
@@ -112,6 +116,35 @@ export default async function MateriasPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Comunicação ética de bloqueio (somente onde temos certeza: limite atingido na criação) */}
+      {!canCreateNewActiveSubject && max.kind === "LIMITED" ? (
+        <Card className="border-dashed">
+          <CardContent className="space-y-3 p-6">
+            <div className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-muted-foreground" />
+              <div className="text-base font-semibold">Limite do plano gratuito atingido</div>
+              <Badge variant="secondary">Premium</Badge>
+            </div>
+
+            <div className="text-sm text-muted-foreground">
+              Você atingiu o limite de matérias ativas permitido no plano gratuito.{" "}
+              <span className="font-medium text-foreground">
+                Isso não altera suas metas nem o funcionamento do estudo.
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button asChild size="sm">
+                <Link href="/assinatura">Ver planos</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/materias/ordem">Agora não</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {!res.ok ? (
         <Card>
@@ -187,11 +220,9 @@ export default async function MateriasPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-6 space-y-4">
+        <CardContent className="space-y-4 p-6">
           <div className="text-sm font-semibold">Prioridade (ordem)</div>
-          <div className="text-sm text-muted-foreground">
-            Reordene e salve. A lista acima passa a refletir a prioridade salva.
-          </div>
+          <div className="text-sm text-muted-foreground">Reordene e salve. A lista acima passa a refletir a prioridade salva.</div>
           <div className="flex items-center gap-2">
             <Button asChild variant="outline">
               <Link href="/materias/ordem">Abrir em tela cheia</Link>

@@ -3,6 +3,8 @@ import "server-only";
 import { headers } from "next/headers";
 import Link from "next/link";
 
+import { Lock } from "lucide-react";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,21 +28,25 @@ function AuthFail() {
 function LockedByPlan() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <Card>
-        <CardContent className="p-6 space-y-3">
+      <Card className="border-dashed">
+        <CardContent className="space-y-3 p-6">
           <div className="flex items-center gap-2">
+            <Lock className="h-5 w-5 text-muted-foreground" />
             <div className="text-lg font-semibold">Informativos</div>
             <Badge variant="secondary">Premium</Badge>
           </div>
+
           <div className="text-sm text-muted-foreground">
-            O robô de informativos é um recurso do plano Premium. Para habilitar, acesse Assinatura.
+            O acompanhamento automático de informativos faz parte do plano Premium.{" "}
+            <span className="font-medium text-foreground">O planejamento e a execução do estudo não são afetados.</span>
           </div>
+
           <div className="flex items-center gap-2">
-            <Button asChild>
+            <Button asChild size="sm">
               <Link href="/assinatura">Ver planos</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href="/dashboard">Voltar</Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard">Agora não</Link>
             </Button>
           </div>
         </CardContent>
@@ -53,7 +59,7 @@ function SubscriptionUnavailable() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <Card>
-        <CardContent className="p-6 space-y-3">
+        <CardContent className="space-y-3 p-6">
           <div className="text-lg font-semibold">Informativos</div>
           <div className="text-sm text-muted-foreground">
             Não foi possível carregar o status da assinatura no momento. Tente novamente.
