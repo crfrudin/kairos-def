@@ -25,6 +25,9 @@ export type SupabaseProfilesRow = {
   address_number: string | null;
   address_complement: string | null;
 
+  // FASE 9 — CPF declaratório
+  cpf: string | null;
+
   // Preferências
   preferred_language: string | null;
   time_zone: string | null;

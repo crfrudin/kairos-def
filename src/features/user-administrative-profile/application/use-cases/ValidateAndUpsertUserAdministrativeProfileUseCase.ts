@@ -1,7 +1,6 @@
 import type { Result } from "../ports/Result";
 
 import type { IUserAdministrativeProfileTransaction } from "../ports/IUserAdministrativeProfileTransaction";
-import type { ICpfValidationService } from "../ports/ICpfValidationService";
 import type { IAddressValidationService } from "../ports/IAddressValidationService";
 
 import type {
@@ -39,20 +38,19 @@ function errMsg(e: unknown): string {
 /**
  * ValidateAndUpsertUserAdministrativeProfileUseCase
  *
- * Regras normativas (FASE 9 — Application):
- * - Se CPF for informado (não-null) => validação EXTERNA obrigatória e bloqueante.
- * - Se validatedAddress for informado (não-null) => validação EXTERNA obrigatória e bloqueante.
- * - Após validações externas aprovadas, aplica validação local do Domínio e persiste (replaceFullContract).
+ * Regras normativas (FASE 9 — V1):
+ * - CPF é DECLARATÓRIO: NÃO há validação externa nem validação de DV.
+ * - Endereço Administrativo Validado: considerado validado por CEP (ViaCEP) via Infra,
+ *   sem chamadas no frontend.
  *
  * Proibições:
  * - sem IO concreto (usa ports)
- * - sem Supabase
- * - sem fetch/axios
+ * - sem Supabase direto
+ * - sem fetch/axios aqui (fica na Infra)
  */
 export class ValidateAndUpsertUserAdministrativeProfileUseCase {
   constructor(
     private readonly tx: IUserAdministrativeProfileTransaction,
-    private readonly cpfValidator: ICpfValidationService,
     private readonly addressValidator: IAddressValidationService
   ) {}
 
@@ -80,7 +78,7 @@ export class ValidateAndUpsertUserAdministrativeProfileUseCase {
       };
     }
 
-    // 1) Validação local (Domínio) — garante normalização e invariantes básicas.
+    // 1) Validação local (Domínio) — garante normalização e invariantes estruturais.
     let aggregate: UserAdministrativeProfile;
     try {
       aggregate = UserAdministrativeProfile.create(input.profile);
@@ -103,28 +101,7 @@ export class ValidateAndUpsertUserAdministrativeProfileUseCase {
 
     const primitives = aggregate.toPrimitives();
 
-    // 2) Validação EXTERNA obrigatória quando CPF informado
-    if (primitives.cpf) {
-      const cpfRes = await this.cpfValidator.validateCpf(primitives.cpf);
-      if (!cpfRes.ok) {
-        if (cpfRes.error.code === "CPF_EXTERNAL_INVALID") {
-          return { ok: false, error: IdentityValidationErrors.cpfInvalid(cpfRes.error.details) };
-        }
-        if (cpfRes.error.code === "CPF_EXTERNAL_UNAVAILABLE") {
-          return { ok: false, error: IdentityValidationErrors.cpfUnavailable(cpfRes.error.details) };
-        }
-
-        // fallback defensivo
-        return {
-          ok: false,
-          error: UserAdministrativeProfileErrors.unexpected("Falha inesperada na validação externa do CPF.", {
-            cause: cpfRes.error,
-          }),
-        };
-      }
-    }
-
-    // 3) Validação EXTERNA obrigatória quando validatedAddress informado
+    // 2) Endereço validado (CEP/ViaCEP) — validação EXTERNA obrigatória quando informado
     if (primitives.validatedAddress) {
       const addrRes = await this.addressValidator.validateAddress(primitives.validatedAddress);
       if (!addrRes.ok) {
@@ -145,7 +122,7 @@ export class ValidateAndUpsertUserAdministrativeProfileUseCase {
       }
     }
 
-    // 4) Persistência — substituição integral (tudo ou nada), via Transaction port
+    // 3) Persistência — substituição integral, via Transaction port
     const contract = {
       userId: input.userId,
       profile: primitives,

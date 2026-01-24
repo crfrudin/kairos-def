@@ -47,6 +47,10 @@ function normalizeInit(p: UserAdministrativeProfilePrimitives | null): UserAdmin
     secondaryEmail: p?.secondaryEmail ?? null,
     address: p?.address ?? null,
     preferences: p?.preferences ?? null,
+
+    // FASE 9
+    cpf: p?.cpf ?? null,
+    validatedAddress: p?.validatedAddress ?? null,
   };
 }
 
@@ -55,7 +59,7 @@ function pad2(n: number): string {
 }
 
 function isoDateFromDate(d: Date): string {
-  // ⚠️ Sem timezone/UTC “inteligente”: usa o dia local (UI), persistindo YYYY-MM-DD.
+  // UI local: persiste YYYY-MM-DD.
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
@@ -67,10 +71,16 @@ function parseIsoDate(iso: string | null): Date | undefined {
   const mm = Number(m[2]);
   const dd = Number(m[3]);
   if (!Number.isFinite(y) || !Number.isFinite(mm) || !Number.isFinite(dd)) return undefined;
-  // Date local; se inválida vira NaN.
   const d = new Date(y, mm - 1, dd);
   if (Number.isNaN(d.getTime())) return undefined;
   return d;
+}
+
+function maskCpf(digits: string | null | undefined): string | null {
+  if (!digits) return null;
+  const d = String(digits);
+  if (d.length !== 11) return '***.***.***-**';
+  return `***.***.***-${d.slice(9, 11)}`;
 }
 
 export function UserAdministrativeProfileForm(props: Props) {
@@ -79,7 +89,7 @@ export function UserAdministrativeProfileForm(props: Props) {
   const [genderCode, setGenderCode] = useState<string>(init.gender?.code ?? '');
   const [consentChecked, setConsentChecked] = useState<boolean>(Boolean(init.preferences?.communicationsConsent ?? false));
 
-  // BirthDate UI state (shadcn calendar)
+  // BirthDate UI state
   const [birthDateIso, setBirthDateIso] = useState<string>(init.birthDate ?? '');
   const birthDateSelected = useMemo(() => parseIsoDate(birthDateIso || null), [birthDateIso]);
   const birthDateLabel = birthDateIso ? birthDateIso : 'Selecionar data';
@@ -94,6 +104,8 @@ export function UserAdministrativeProfileForm(props: Props) {
     : props.completeness.exists
       ? 'Incompleto'
       : 'Não cadastrado';
+
+  const cpfMasked = maskCpf(init.cpf);
 
   return (
     <div className="space-y-4">
@@ -162,23 +174,23 @@ export function UserAdministrativeProfileForm(props: Props) {
 
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
-  mode="single"
-  captionLayout="dropdown"
-  fromYear={1900}
-  toYear={new Date().getFullYear()}
-  selected={birthDateSelected}
-  onSelect={(d) => {
-    if (!d) {
-      setBirthDateIso('');
-      return;
-    }
-    setBirthDateIso(isoDateFromDate(d));
-  }}
-  initialFocus
-/>                </PopoverContent>
+                    mode="single"
+                    captionLayout="dropdown"
+                    fromYear={1900}
+                    toYear={new Date().getFullYear()}
+                    selected={birthDateSelected}
+                    onSelect={(d) => {
+                      if (!d) {
+                        setBirthDateIso('');
+                        return;
+                      }
+                      setBirthDateIso(isoDateFromDate(d));
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
               </Popover>
 
-              {/* hidden para submit (contrato espera YYYY-MM-DD | null) */}
               <input type="hidden" name="birthDate" value={birthDateIso} />
             </div>
 
@@ -217,6 +229,39 @@ export function UserAdministrativeProfileForm(props: Props) {
 
         <Card>
           <CardHeader>
+            <CardTitle>Identidade Fiscal</CardTitle>
+            <CardDescription>CPF declaratório para emissão de nota fiscal.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="text-sm text-muted-foreground">
+              O CPF é informado pelo usuário e não é validado externamente.
+            </div>
+
+            {cpfMasked ? (
+              <Alert>
+                <AlertTitle>CPF cadastrado</AlertTitle>
+                <AlertDescription>
+                  {cpfMasked}. Para alterar, informe novamente abaixo.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="grid gap-2">
+              <Label htmlFor="cpf">CPF (opcional)</Label>
+              <Input
+                id="cpf"
+                name="cpf"
+                defaultValue=""
+                inputMode="numeric"
+                placeholder="Somente números (11 dígitos)"
+                autoComplete="off"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Contato</CardTitle>
             <CardDescription>Dados de contato administrativos.</CardDescription>
           </CardHeader>
@@ -235,9 +280,9 @@ export function UserAdministrativeProfileForm(props: Props) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Endereço</CardTitle>
+            <CardTitle>Endereço Administrativo Validado</CardTitle>
             <CardDescription>
-              Se você informar CEP, o contrato exige UF e Cidade (validação no domínio).
+              O endereço é considerado validado por CEP (consulta no servidor). Dados retornados pelo servidor prevalecem.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -252,7 +297,7 @@ export function UserAdministrativeProfileForm(props: Props) {
                 <Input id="addressUf" name="addressUf" defaultValue={init.address?.uf ?? ''} placeholder="Ex.: DF" />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="addressCity">Cidade</Label>
+                <Label htmlFor="addressCity">Município</Label>
                 <Input id="addressCity" name="addressCity" defaultValue={init.address?.city ?? ''} placeholder="Ex.: Brasília" />
               </div>
             </div>
@@ -265,7 +310,7 @@ export function UserAdministrativeProfileForm(props: Props) {
                 <Input id="addressNeighborhood" name="addressNeighborhood" defaultValue={init.address?.neighborhood ?? ''} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="addressStreet">Rua</Label>
+                <Label htmlFor="addressStreet">Logradouro</Label>
                 <Input id="addressStreet" name="addressStreet" defaultValue={init.address?.street ?? ''} />
               </div>
             </div>
@@ -276,7 +321,7 @@ export function UserAdministrativeProfileForm(props: Props) {
                 <Input id="addressNumber" name="addressNumber" defaultValue={init.address?.number ?? ''} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="addressComplement">Complemento</Label>
+                <Label htmlFor="addressComplement">Complemento (opcional)</Label>
                 <Input id="addressComplement" name="addressComplement" defaultValue={init.address?.complement ?? ''} />
               </div>
             </div>

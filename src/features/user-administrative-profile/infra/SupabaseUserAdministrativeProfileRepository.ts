@@ -1,5 +1,4 @@
 // src/features/user-administrative-profile/infra/SupabaseUserAdministrativeProfileRepository.ts
-
 import "server-only";
 
 import { createSupabaseServerClient } from "@/core/clients/createSupabaseServerClient";
@@ -18,6 +17,49 @@ type GenderCode = "MASCULINO" | "FEMININO" | "PREFIRO_NAO_INFORMAR" | "OUTRO";
 function mapDbRowToPrimitives(row: SupabaseProfilesRow): UserAdministrativeProfilePrimitives {
   const genderCode = row.gender ? (row.gender as GenderCode) : null;
 
+  const hasAnyAddress =
+    !!row.cep ||
+    !!row.uf ||
+    !!row.address_city ||
+    !!row.address_neighborhood ||
+    !!row.address_street ||
+    !!row.address_number ||
+    !!row.address_complement;
+
+  const address = hasAnyAddress
+    ? {
+        cep: row.cep ?? null,
+        uf: row.uf ?? null,
+        city: row.address_city ?? null,
+        neighborhood: row.address_neighborhood ?? null,
+        street: row.address_street ?? null,
+        number: row.address_number ?? null,
+        complement: row.address_complement ?? null,
+      }
+    : null;
+
+  // ValidatedAddress só é emitido quando TODOS os campos essenciais existem,
+  // para não causar falhas de domínio ao ler o contrato.
+  const hasValidated =
+    !!row.cep &&
+    !!row.uf &&
+    !!row.address_city &&
+    !!row.address_neighborhood &&
+    !!row.address_street &&
+    !!row.address_number;
+
+  const validatedAddress = hasValidated
+    ? {
+        cep: row.cep,
+        uf: row.uf,
+        city: row.address_city,
+        neighborhood: row.address_neighborhood,
+        street: row.address_street,
+        number: row.address_number,
+        complement: row.address_complement ?? null,
+      }
+    : null;
+
   return {
     fullName: row.full_name,
 
@@ -34,24 +76,12 @@ function mapDbRowToPrimitives(row: SupabaseProfilesRow): UserAdministrativeProfi
     phone: row.phone ?? null,
     secondaryEmail: row.secondary_email ?? null,
 
-    address:
-  row.cep ||
-  row.uf ||
-  row.address_city ||
-  row.address_neighborhood ||
-  row.address_street ||
-  row.address_number ||
-  row.address_complement
-    ? {
-        cep: row.cep ?? null,
-        uf: row.uf ?? null,
-        city: row.address_city ?? null,
-        neighborhood: row.address_neighborhood ?? null,
-        street: row.address_street ?? null,
-        number: row.address_number ?? null,
-        complement: row.address_complement ?? null,
-      }
-    : null,
+    // FASE 6 (mantém)
+    address,
+
+    // FASE 9
+    cpf: row.cpf ?? null,
+    validatedAddress,
 
     preferences:
       row.preferred_language || row.time_zone || row.communications_consent !== null
@@ -72,6 +102,10 @@ function mapPrimitivesToDbUpdate(input: {
 }): Partial<SupabaseProfilesRow> & { user_id: string } {
   const p = input.primitives;
 
+  // Fonte do endereço persistido: validatedAddress tem precedência (Fase 9).
+  // Caso não exista, usa address (Fase 6).
+  const addr = p.validatedAddress ?? p.address ?? null;
+
   return {
     user_id: input.userId,
 
@@ -88,15 +122,17 @@ function mapPrimitivesToDbUpdate(input: {
     phone: p.phone ?? null,
     secondary_email: p.secondaryEmail ?? null,
 
-    // Endereço
-cep: p.address?.cep ?? null,
-uf: p.address?.uf ?? null,
-address_city: p.address?.city ?? null,
-address_neighborhood: p.address?.neighborhood ?? null,
-address_street: p.address?.street ?? null,
-address_number: p.address?.number ?? null,
-address_complement: p.address?.complement ?? null,
+    // Endereço (persistência única em profiles)
+    cep: addr?.cep ?? null,
+    uf: addr?.uf ?? null,
+    address_city: addr?.city ?? null,
+    address_neighborhood: addr?.neighborhood ?? null,
+    address_street: addr?.street ?? null,
+    address_number: addr?.number ?? null,
+    address_complement: addr?.complement ?? null,
 
+    // FASE 9 — CPF declaratório
+    cpf: p.cpf ?? null,
 
     // Preferências
     preferred_language: p.preferences?.preferredLanguage ?? null,
@@ -116,30 +152,30 @@ export class SupabaseUserAdministrativeProfileRepository implements IUserAdminis
     const { data, error } = await supabase
       .from("profiles")
       .select(
-  [
-    "user_id",
-    "full_name",
-    "social_name",
-    "birth_date",
-    "gender",
-    "gender_other_description",
-    "phone",
-    "secondary_email",
-    "cep",
-    "uf",
-    "address_city",
-    "address_neighborhood",
-    "address_street",
-    "address_number",
-    "address_complement",
-    "preferred_language",
-    "time_zone",
-    "communications_consent",
-    "created_at",
-    "updated_at",
-  ].join(",")
-)
-
+        [
+          "user_id",
+          "full_name",
+          "social_name",
+          "birth_date",
+          "gender",
+          "gender_other_description",
+          "phone",
+          "secondary_email",
+          "cep",
+          "uf",
+          "address_city",
+          "address_neighborhood",
+          "address_street",
+          "address_number",
+          "address_complement",
+          "cpf",
+          "preferred_language",
+          "time_zone",
+          "communications_consent",
+          "created_at",
+          "updated_at",
+        ].join(",")
+      )
       .eq("user_id", userId)
       .maybeSingle<SupabaseProfilesRow>();
 

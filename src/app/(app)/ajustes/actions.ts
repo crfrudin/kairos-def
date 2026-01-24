@@ -32,6 +32,16 @@ function trimToNull(v: string): string | null {
   return t ? t : null;
 }
 
+function digitsOnlyOrNull(v: string): string | null {
+  const s = v ?? '';
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c >= '0' && c <= '9') out += c;
+  }
+  return out.length ? out : null;
+}
+
 function safeBool(v: FormDataEntryValue | null): boolean | null {
   if (v === null) return null;
   if (typeof v !== 'string') return null;
@@ -60,6 +70,10 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
   const phone = trimToNull(safeString(fd.get('phone')));
   const secondaryEmail = trimToNull(safeString(fd.get('secondaryEmail')));
 
+  // CPF (declaratório)
+  const cpfDigits = digitsOnlyOrNull(safeString(fd.get('cpf')));
+
+  // Endereço (mesma UI) — manter address (Fase 6) e, quando completo, emitir validatedAddress (Fase 9)
   const cep = trimToNull(safeString(fd.get('addressCep')));
   const uf = trimToNull(safeString(fd.get('addressUf')));
   const city = trimToNull(safeString(fd.get('addressCity')));
@@ -72,6 +86,12 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
   const address = anyAddressProvided
     ? { cep, uf, city, neighborhood, street, number, complement }
     : null;
+
+  // validatedAddress só quando completo (contrato do domínio ValidatedAddress)
+  const validatedAddress =
+    cep && uf && city && neighborhood && street && number
+      ? { cep, uf, city, neighborhood, street, number, complement }
+      : null;
 
   const preferredLanguage = trimToNull(safeString(fd.get('preferredLanguage')));
   const timeZone = trimToNull(safeString(fd.get('timeZone')));
@@ -91,6 +111,10 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
     secondaryEmail,
     address,
     preferences,
+
+    // FASE 9
+    cpf: cpfDigits,
+    validatedAddress,
   };
 }
 
@@ -128,18 +152,27 @@ export async function loadUserAdministrativeProfileAction(): Promise<LoadState> 
 export async function upsertUserAdministrativeProfileAction(_prev: SaveState, formData: FormData): Promise<SaveState> {
   try {
     const userId = await requireAuthenticatedUserId();
-    const { ucUpsert, ucCheckCompleteness } = createUserAdministrativeProfileSsrComposition();
+    const { ucGet, ucValidateAndUpsert, ucCheckCompleteness } = createUserAdministrativeProfileSsrComposition();
+
+    // Fonte de verdade do servidor: usamos para preservar CPF quando o usuário não o reenviar
+    const current = await ucGet.execute({ userId });
+    const currentProfile = current.ok ? current.data.profile : null;
 
     const profile = buildProfileFromFormData(formData);
 
-    const saved = await ucUpsert.execute({
+    // Se o usuário não preencher CPF, preserva o CPF existente (sem reexibir no client)
+    if (!profile.cpf && currentProfile?.cpf) {
+      profile.cpf = currentProfile.cpf;
+    }
+
+    const saved = await ucValidateAndUpsert.execute({
       userId,
       now: isoTimestampNow(),
       profile,
     });
 
     if (!saved.ok) {
-      console.error('[ajustes] ucUpsert failed', saved.error);
+      console.error('[ajustes] ucValidateAndUpsert failed', saved.error);
       return { ok: false, message: 'Não foi possível salvar. Verifique os campos e tente novamente.' };
     }
 
