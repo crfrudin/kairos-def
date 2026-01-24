@@ -5,7 +5,9 @@ import Stripe from "stripe";
 
 import { getSupabaseAdmin } from "@/core/clients/supabaseAdmin";
 
-import { UpgradeToPremium, ScheduleCancellation, ReactivateSubscription } from "@/features/subscription";
+import { UpgradeToPremium } from "@/features/subscription/application/use-cases/UpgradeToPremium";
+import { ScheduleCancellation } from "@/features/subscription/application/use-cases/ScheduleCancellation";
+import { ReactivateSubscription } from "@/features/subscription/application/use-cases/ReactivateSubscription";
 
 import { StripeWebhookSubscriptionWriter } from "@/integrations/stripe/webhooks/StripeWebhookSubscriptionWriter";
 import { SupabaseSubscriptionRepositoryServiceRole } from "@/integrations/stripe/mapping/SupabaseSubscriptionRepositoryServiceRole";
@@ -85,7 +87,6 @@ export async function POST(req: Request) {
   const cancelUC = new ScheduleCancellation(repo);
   const reactivateUC = new ReactivateSubscription(repo);
 
-  // Dispatcher
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -95,7 +96,6 @@ export async function POST(req: Request) {
         return badRequest("USER_ID_MISSING: checkout.session.completed missing client_reference_id/metadata.userId");
       }
 
-      // ✅ Idempotência determinística (sem leitura prévia)
       const { alreadyProcessed } = await writer.appendEventIdempotent({
         stripeEventId: event.id,
         userId,
@@ -108,10 +108,15 @@ export async function POST(req: Request) {
 
       const res = await upgradeUC.execute({ userId });
 
-      // Se já está premium, UC é idempotente (success)
-      // Se erro normativo, ainda assim não deve explodir retry infinito.
       if (!res.ok) {
-        return ok({ received: true, processed: false, type: event.type, eventId: event.id, result: "error", code: res.error.code });
+        return ok({
+          received: true,
+          processed: false,
+          type: event.type,
+          eventId: event.id,
+          result: "error",
+          code: res.error.code,
+        });
       }
 
       return ok({ received: true, processed: true, type: event.type, eventId: event.id, result: "ok" });
@@ -125,10 +130,11 @@ export async function POST(req: Request) {
         return badRequest("USER_ID_MISSING: customer.subscription.updated missing subscription.metadata.userId");
       }
 
-      const cancelAtPeriodEnd = Boolean(sub.cancel_at_period_end);
+      const cancelAtPeriodEnd = Boolean((sub as any).cancel_at_period_end);
 
       if (cancelAtPeriodEnd) {
-        const currentPeriodEnd = Number(sub.current_period_end ?? 0);
+        // ✅ defensivo: tipagem do SDK no seu build não expõe current_period_end
+        const currentPeriodEnd = Number((sub as any).current_period_end ?? 0);
         if (!currentPeriodEnd) {
           return badRequest("PERIOD_END_MISSING: subscription.current_period_end missing");
         }
@@ -148,13 +154,19 @@ export async function POST(req: Request) {
         const res = await cancelUC.execute({ userId, cancelEffectiveOn });
 
         if (!res.ok) {
-          return ok({ received: true, processed: false, type: event.type, eventId: event.id, result: "error", code: res.error.code });
+          return ok({
+            received: true,
+            processed: false,
+            type: event.type,
+            eventId: event.id,
+            result: "error",
+            code: res.error.code,
+          });
         }
 
         return ok({ received: true, processed: true, type: event.type, eventId: event.id, result: "ok" });
       }
 
-      // cancel_at_period_end = false => reativação (se estava canceling)
       const { alreadyProcessed } = await writer.appendEventIdempotent({
         stripeEventId: event.id,
         userId,
@@ -167,18 +179,22 @@ export async function POST(req: Request) {
 
       const res = await reactivateUC.execute({ userId });
 
-      // UC pode retornar NotInCancelingState (normativo). Tratamos como “já ok” e damos ACK 200.
       if (!res.ok) {
-        return ok({ received: true, processed: false, type: event.type, eventId: event.id, result: "error", code: res.error.code });
+        return ok({
+          received: true,
+          processed: false,
+          type: event.type,
+          eventId: event.id,
+          result: "error",
+          code: res.error.code,
+        });
       }
 
       return ok({ received: true, processed: true, type: event.type, eventId: event.id, result: "ok" });
     }
 
-    // (defensivo) nunca deve cair aqui por whitelist
     return ok({ received: true, ignored: true, reason: "UNREACHABLE", type: event.type, eventId: event.id });
   } catch (e) {
-    // Falha inesperada: devolver 500 para permitir retry do Stripe
     const msg = e instanceof Error ? e.message : "UNEXPECTED";
     return new NextResponse(`Webhook processing failed: ${msg}`, { status: 500 });
   }

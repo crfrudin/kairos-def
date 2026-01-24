@@ -2,12 +2,16 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { ISubscriptionRepository } from "@/features/subscription";
-import { Subscription } from "@/features/subscription";
-import { SubscriptionId } from "@/features/subscription";
-import { assertPlanTier, type PlanTier } from "@/features/subscription";
-import { assertSubscriptionState, type SubscriptionState } from "@/features/subscription";
-import { SubscriptionDate } from "@/features/subscription";
+import type { ISubscriptionRepository } from "@/features/subscription/application/ports/ISubscriptionRepository";
+
+import { Subscription } from "@/features/subscription/domain/entities/Subscription";
+import { SubscriptionId } from "@/features/subscription/domain/value-objects/SubscriptionId";
+import { assertPlanTier, type PlanTier } from "@/features/subscription/domain/value-objects/PlanTier";
+import {
+  assertSubscriptionState,
+  type SubscriptionState,
+} from "@/features/subscription/domain/value-objects/SubscriptionState";
+import { SubscriptionDate } from "@/features/subscription/domain/value-objects/SubscriptionDate";
 
 /**
  * Implementação de ISubscriptionRepository usando service role (G1),
@@ -46,32 +50,28 @@ export class SupabaseSubscriptionRepositoryServiceRole implements ISubscriptionR
     const plan: PlanTier = planRaw;
     const state: SubscriptionState = stateRaw;
 
-    // Construção base FREE
     const id = SubscriptionId.create(userId);
     const { subscription } = Subscription.createFree(id);
 
-    // Replay determinístico para chegar no estado persistido
+    // Replay determinístico
     if (plan === "PREMIUM" || state === "PREMIUM_ACTIVE" || state === "PREMIUM_CANCELING") {
-      // FREE -> PREMIUM_ACTIVE
       try {
         subscription.upgradeToPremium();
       } catch {
-        // Se já estava premium por algum motivo (não deveria aqui), ignoramos: invariantes do domínio protegem.
+        // domínio protege; se já não der, propagação ocorre por invariantes/fluxo
       }
     }
 
     if (state === "PREMIUM_CANCELING") {
       const date = cancelRaw ? SubscriptionDate.create(String(cancelRaw).slice(0, 10)) : undefined;
+
       try {
         subscription.scheduleCancellation(date);
       } catch {
-        // Se falhar, o domínio protege; melhor propagar como erro de infra/domínio
-        // (não mascarar inconsistência)
         throw new Error("SUBSCRIPTION_REPLAY_FAILED: cannot apply canceling state");
       }
     }
 
-    // Se estado persistido for FREE, nada a fazer (já está FREE).
     return subscription;
   }
 
