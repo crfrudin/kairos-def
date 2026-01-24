@@ -6,7 +6,6 @@ import Stripe from "stripe";
 import { createSupabaseServerClient } from "@/core/clients/createSupabaseServerClient";
 
 import { SupabaseUserAdministrativeProfileRepository } from "@/features/user-administrative-profile/infra/SupabaseUserAdministrativeProfileRepository";
-import { CheckUserAdministrativeProfileCompletenessUseCase } from "@/features/user-administrative-profile/application/use-cases/CheckUserAdministrativeProfileCompletenessUseCase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,21 +68,61 @@ function parseBillingPeriod(body: unknown): BillingPeriod {
   return raw;
 }
 
-async function ensureAdministrativeProfileComplete(userId: string): Promise<{ ok: true } | { ok: false; validation?: unknown }> {
+function digitsOnly(v: unknown): string {
+  const s = String(v ?? "");
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (c >= "0" && c <= "9") out += c;
+  }
+  return out;
+}
+
+/**
+ * ETAPA 4 — Gate de assinatura (Premium)
+ *
+ * Regra: ao clicar em ASSINAR, exige:
+ * - CPF informado (digits-only, 11)
+ * - Endereço completo (CEP/UF/Cidade/Bairro/Logradouro/Número)
+ *
+ * Observação: isso NÃO muda o "completo" exibido em /ajustes.
+ * É um gate específico para cobrança/nota fiscal.
+ */
+async function ensureBillingProfileComplete(
+  userId: string
+): Promise<{ ok: true } | { ok: false; missing: string[] }> {
   const repo = new SupabaseUserAdministrativeProfileRepository();
-  const uc = new CheckUserAdministrativeProfileCompletenessUseCase(repo);
+  const contract = await repo.getFullContract(userId);
 
-  const res = await uc.execute({ userId });
-
-  if (!res.ok) {
-    // Infra/Unexpected do UC (não é "incompleto"; é falha técnica)
-    throw new Error(`UAP_COMPLETENESS_FAILED: ${res.error.code}`);
+  if (!contract?.profile) {
+    return { ok: false, missing: ["profile"] };
   }
 
-  if (!res.data.exists || !res.data.isComplete) {
-    return { ok: false, validation: res.data.validation ?? null };
-  }
+  const p = contract.profile as any;
 
+  const cpf = digitsOnly(p.cpf);
+  const missing: string[] = [];
+
+  if (cpf.length !== 11) missing.push("cpf");
+
+  // Endereço: aceitamos tanto `validatedAddress` quanto `address`.
+  const addr = (p.validatedAddress ?? p.address) as any;
+
+  const cep = digitsOnly(addr?.cep);
+  const uf = String(addr?.uf ?? "").trim();
+  const city = String(addr?.city ?? "").trim();
+  const neighborhood = String(addr?.neighborhood ?? "").trim();
+  const street = String(addr?.street ?? "").trim();
+  const number = String(addr?.number ?? "").trim();
+
+  if (cep.length !== 8) missing.push("address.cep");
+  if (!uf) missing.push("address.uf");
+  if (!city) missing.push("address.city");
+  if (!neighborhood) missing.push("address.neighborhood");
+  if (!street) missing.push("address.street");
+  if (!number) missing.push("address.number");
+
+  if (missing.length) return { ok: false, missing };
   return { ok: true };
 }
 
@@ -106,14 +145,14 @@ export async function POST(req: Request) {
     // ✅ Auth por cookie
     const userId = await requireUserIdFromCookies();
 
-    // ✅ Gate fiscal/administrativo (Fase 6): sem inferência normativa nova
-    const completeness = await ensureAdministrativeProfileComplete(userId);
-    if (!completeness.ok) {
+    // ✅ Gate premium: CPF + endereço completo
+    const billingGate = await ensureBillingProfileComplete(userId);
+    if (!billingGate.ok) {
       const isDev = process.env.NODE_ENV !== "production";
       return json(422, {
         ok: false,
         error: "BILLING_PROFILE_INCOMPLETE",
-        ...(isDev ? { validation: completeness.validation ?? null } : {}),
+        ...(isDev ? { validation: { missing: billingGate.missing } } : {}),
       });
     }
 
@@ -151,11 +190,6 @@ export async function POST(req: Request) {
 
     if (msg.startsWith("ENV_MISSING") || msg.startsWith("BASE_URL_MISSING")) {
       return json(500, { ok: false, error: "SERVER_MISCONFIGURED", ...(isDev ? { debug: msg } : {}) });
-    }
-
-    // Se o UC falhou tecnicamente, não é "cadastro incompleto": é erro interno
-    if (msg.startsWith("UAP_COMPLETENESS_FAILED")) {
-      return json(500, { ok: false, error: "UNEXPECTED", ...(isDev ? { debug: msg } : {}) });
     }
 
     return json(500, { ok: false, error: "UNEXPECTED", ...(isDev ? { debug: msg } : {}) });

@@ -22,7 +22,7 @@ export default async function AjustesPage() {
             <CardTitle>Ajustes</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Não foi possível carregar os dados administrativos.
+            Não foi possível carregar seus dados pessoais e complementares.
           </CardContent>
         </Card>
       </div>

@@ -58,6 +58,10 @@ function errMsg(e: unknown): string {
   }
 }
 
+function hasField(fd: FormData, name: string): boolean {
+  return fd.get(name) !== null;
+}
+
 function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimitives {
   const fullName = safeString(fd.get('fullName'));
 
@@ -73,7 +77,7 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
   // CPF (declaratório)
   const cpfDigits = digitsOnlyOrNull(safeString(fd.get('cpf')));
 
-  // Endereço (mesma UI) — manter address (Fase 6) e, quando completo, emitir validatedAddress (Fase 9)
+  // Endereço (Fase 6)
   const cep = trimToNull(safeString(fd.get('addressCep')));
   const uf = trimToNull(safeString(fd.get('addressUf')));
   const city = trimToNull(safeString(fd.get('addressCity')));
@@ -83,24 +87,21 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
   const complement = trimToNull(safeString(fd.get('addressComplement')));
 
   const anyAddressProvided = !!(cep || uf || city || neighborhood || street || number || complement);
-  const address = anyAddressProvided
-    ? { cep, uf, city, neighborhood, street, number, complement }
-    : null;
+  const address = anyAddressProvided ? { cep, uf, city, neighborhood, street, number, complement } : null;
 
-  // validatedAddress só quando completo (contrato do domínio ValidatedAddress)
-  const validatedAddress =
-    cep && uf && city && neighborhood && street && number
-      ? { cep, uf, city, neighborhood, street, number, complement }
-      : null;
+  /**
+   * IMPORTANTE:
+   * validatedAddress dispara validação EXTERNA no ValidateAndUpsert...UseCase.
+   * No /ajustes atual, não emitimos validatedAddress (vamos religar na ETAPA 4, com regra fiscal do checkout).
+   */
+  const validatedAddress = null;
 
   const preferredLanguage = trimToNull(safeString(fd.get('preferredLanguage')));
   const timeZone = trimToNull(safeString(fd.get('timeZone')));
   const communicationsConsent = safeBool(fd.get('communicationsConsent'));
 
   const anyPrefsProvided = !!(preferredLanguage || timeZone || communicationsConsent !== null);
-  const preferences = anyPrefsProvided
-    ? { preferredLanguage, timeZone, communicationsConsent }
-    : null;
+  const preferences = anyPrefsProvided ? { preferredLanguage, timeZone, communicationsConsent } : null;
 
   return {
     fullName,
@@ -123,10 +124,7 @@ export async function loadUserAdministrativeProfileAction(): Promise<LoadState> 
     const userId = await requireAuthenticatedUserId();
     const { ucGet, ucCheckCompleteness } = createUserAdministrativeProfileSsrComposition();
 
-    const [got, checked] = await Promise.all([
-      ucGet.execute({ userId }),
-      ucCheckCompleteness.execute({ userId }),
-    ]);
+    const [got, checked] = await Promise.all([ucGet.execute({ userId }), ucCheckCompleteness.execute({ userId })]);
 
     if (!got.ok) {
       console.error('[ajustes] ucGet failed', got.error);
@@ -154,15 +152,70 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
     const userId = await requireAuthenticatedUserId();
     const { ucGet, ucValidateAndUpsert, ucCheckCompleteness } = createUserAdministrativeProfileSsrComposition();
 
-    // Fonte de verdade do servidor: usamos para preservar CPF quando o usuário não o reenviar
+    // Fonte de verdade do servidor (para preservar campos ausentes no POST)
     const current = await ucGet.execute({ userId });
     const currentProfile = current.ok ? current.data.profile : null;
 
     const profile = buildProfileFromFormData(formData);
 
-    // Se o usuário não preencher CPF, preserva o CPF existente (sem reexibir no client)
-    if (!profile.cpf && currentProfile?.cpf) {
+    /**
+     * PRESERVAÇÃO SEM PERDA DE DADOS (ETAPA 3)
+     * - O contrato é substituição integral (replaceFullContract).
+     * - Se um campo NÃO veio no FormData (porque UI ocultou ou não renderizou o input),
+     *   preservamos o valor atual do servidor.
+     * - Se o campo veio vazio, isso significa intenção de limpar => NÃO preservamos.
+     */
+
+    // CPF: preserva APENAS se o input nem veio no POST.
+    if (!hasField(formData, 'cpf') && currentProfile?.cpf) {
       profile.cpf = currentProfile.cpf;
+    }
+
+    // Preferências: preserva se nenhum campo de preferência veio no POST.
+    const prefFields = ['preferredLanguage', 'timeZone', 'communicationsConsent'] as const;
+    const anyPrefFieldPresent = prefFields.some((k) => hasField(formData, k));
+    if (!anyPrefFieldPresent) {
+      profile.preferences = currentProfile?.preferences ?? null;
+    }
+
+    // Endereço: preserva se nenhum campo de endereço veio no POST.
+    const addrFields = [
+      'addressCep',
+      'addressUf',
+      'addressCity',
+      'addressNeighborhood',
+      'addressStreet',
+      'addressNumber',
+      'addressComplement',
+    ] as const;
+    const anyAddrFieldPresent = addrFields.some((k) => hasField(formData, k));
+    if (!anyAddrFieldPresent) {
+      profile.address = currentProfile?.address ?? null;
+    }
+
+    // Telefone / Email secundário: preserva se o input não veio no POST.
+    if (!hasField(formData, 'phone')) {
+      profile.phone = currentProfile?.phone ?? null;
+    }
+    if (!hasField(formData, 'secondaryEmail')) {
+      profile.secondaryEmail = currentProfile?.secondaryEmail ?? null;
+    }
+
+    // Identidade (para evitar perdas se algum campo for removido da UI)
+    if (!hasField(formData, 'socialName')) {
+      profile.socialName = currentProfile?.socialName ?? null;
+    }
+    if (!hasField(formData, 'birthDate')) {
+      profile.birthDate = currentProfile?.birthDate ?? null;
+    }
+    if (!hasField(formData, 'genderCode') && !hasField(formData, 'genderOtherDescription')) {
+      profile.gender = currentProfile?.gender ?? null;
+    }
+
+    // validatedAddress: hoje o /ajustes não emite, então preserva se já existir.
+    // (Isso evita apagar caso já esteja preenchido por outra rotina/fase.)
+    if (currentProfile?.validatedAddress && profile.validatedAddress === null) {
+      profile.validatedAddress = currentProfile.validatedAddress;
     }
 
     const saved = await ucValidateAndUpsert.execute({
@@ -182,11 +235,9 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
       return { ok: true, message: 'Ajustes salvos. Alguns campos podem estar incompletos.' };
     }
 
-    if (checked.data.isComplete) {
-      return { ok: true, message: 'Ajustes salvos com sucesso.' };
-    }
-
-    return { ok: true, message: 'Ajustes salvos. Alguns campos podem estar incompletos.' };
+    return checked.data.isComplete
+      ? { ok: true, message: 'Ajustes salvos com sucesso.' }
+      : { ok: true, message: 'Ajustes salvos. Alguns campos podem estar incompletos.' };
   } catch (e: unknown) {
     console.error('[ajustes] upsertUserAdministrativeProfileAction exception', errMsg(e), e);
     return { ok: false, message: 'Não foi possível salvar. Tente novamente.' };

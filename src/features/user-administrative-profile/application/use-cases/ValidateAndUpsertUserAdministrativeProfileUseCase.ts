@@ -38,15 +38,15 @@ function errMsg(e: unknown): string {
 /**
  * ValidateAndUpsertUserAdministrativeProfileUseCase
  *
- * Regras normativas (FASE 9 — V1):
- * - CPF é DECLARATÓRIO: NÃO há validação externa nem validação de DV.
- * - Endereço Administrativo Validado: considerado validado por CEP (ViaCEP) via Infra,
- *   sem chamadas no frontend.
+ * Regras normativas (FASE 9 — Application):
+ * - CPF é DECLARATÓRIO (sem validação externa).
+ * - Se validatedAddress for informado (não-null) => validação EXTERNA obrigatória e bloqueante.
+ * - Após validações externas aprovadas, aplica validação local do Domínio e persiste (replaceFullContract).
  *
  * Proibições:
  * - sem IO concreto (usa ports)
- * - sem Supabase direto
- * - sem fetch/axios aqui (fica na Infra)
+ * - sem Supabase
+ * - sem fetch/axios
  */
 export class ValidateAndUpsertUserAdministrativeProfileUseCase {
   constructor(
@@ -78,7 +78,7 @@ export class ValidateAndUpsertUserAdministrativeProfileUseCase {
       };
     }
 
-    // 1) Validação local (Domínio) — garante normalização e invariantes estruturais.
+    // 1) Validação local (Domínio) — garante normalização e invariantes básicas.
     let aggregate: UserAdministrativeProfile;
     try {
       aggregate = UserAdministrativeProfile.create(input.profile);
@@ -101,13 +101,15 @@ export class ValidateAndUpsertUserAdministrativeProfileUseCase {
 
     const primitives = aggregate.toPrimitives();
 
-    // 2) Endereço validado (CEP/ViaCEP) — validação EXTERNA obrigatória quando informado
+    // 2) Validação EXTERNA obrigatória quando validatedAddress informado
     if (primitives.validatedAddress) {
       const addrRes = await this.addressValidator.validateAddress(primitives.validatedAddress);
+
       if (!addrRes.ok) {
         if (addrRes.error.code === "ADDRESS_EXTERNAL_INVALID") {
           return { ok: false, error: IdentityValidationErrors.addressInvalid(addrRes.error.details) };
         }
+
         if (addrRes.error.code === "ADDRESS_EXTERNAL_UNAVAILABLE") {
           return { ok: false, error: IdentityValidationErrors.addressUnavailable(addrRes.error.details) };
         }
@@ -122,7 +124,7 @@ export class ValidateAndUpsertUserAdministrativeProfileUseCase {
       }
     }
 
-    // 3) Persistência — substituição integral, via Transaction port
+    // 3) Persistência — substituição integral (tudo ou nada), via Transaction port
     const contract = {
       userId: input.userId,
       profile: primitives,

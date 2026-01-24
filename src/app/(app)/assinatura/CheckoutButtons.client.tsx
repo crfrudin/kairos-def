@@ -6,12 +6,23 @@ type BillingPeriod = "MONTHLY" | "ANNUAL";
 
 type CheckoutApiResponse =
   | { ok: true; url: string }
-  | { ok: false; error: "BILLING_PROFILE_INCOMPLETE" | "AUTH_REQUIRED" | "FORBIDDEN" | "BAD_REQUEST" | "SERVER_MISCONFIGURED" | "UNEXPECTED"; debug?: string };
+  | {
+      ok: false;
+      error:
+        | "BILLING_PROFILE_INCOMPLETE"
+        | "AUTH_REQUIRED"
+        | "FORBIDDEN"
+        | "BAD_REQUEST"
+        | "SERVER_MISCONFIGURED"
+        | "UNEXPECTED";
+      debug?: string;
+    };
 
-function toNextUrl(path: string): string {
+function toNextUrl(path: string, extra?: Record<string, string>): string {
   const next = encodeURIComponent("/assinatura");
   const base = path.replace(/\s+/g, "");
-  return `${base}?next=${next}`;
+  const params = new URLSearchParams({ next, ...(extra ?? {}) });
+  return `${base}?${params.toString()}`;
 }
 
 export function CheckoutButtons() {
@@ -25,9 +36,15 @@ export function CheckoutButtons() {
 
       const data = (await res.json().catch(() => null)) as CheckoutApiResponse | null;
 
-      // Gate: cadastro administrativo incompleto -> manda para /ajustes
-      if (res.status === 422 && data && "ok" in data && data.ok === false && data.error === "BILLING_PROFILE_INCOMPLETE") {
-        window.location.href = toNextUrl("/ajustes");
+      // Gate: cadastro fiscal/administrativo incompleto -> manda para /ajustes
+      if (
+        res.status === 422 &&
+        data &&
+        "ok" in data &&
+        data.ok === false &&
+        data.error === "BILLING_PROFILE_INCOMPLETE"
+      ) {
+        window.location.href = toNextUrl("/ajustes", { reason: "billing_profile_incomplete" });
         return;
       }
 
