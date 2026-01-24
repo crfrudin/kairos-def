@@ -83,6 +83,17 @@ function maskCpf(digits: string | null | undefined): string | null {
   return `***.***.***-${d.slice(9, 11)}`;
 }
 
+function onlyCpfChars(v: string): string {
+  // Permite apenas dígitos + pontuação comum, para UX. O servidor normaliza (digits-only).
+  let out = '';
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i];
+    const isDigit = c >= '0' && c <= '9';
+    if (isDigit || c === '.' || c === '-' || c === ' ' || c === '/') out += c;
+  }
+  return out;
+}
+
 export function UserAdministrativeProfileForm(props: Props) {
   const init = useMemo(() => normalizeInit(props.initialProfile), [props.initialProfile]);
 
@@ -93,6 +104,9 @@ export function UserAdministrativeProfileForm(props: Props) {
   const [birthDateIso, setBirthDateIso] = useState<string>(init.birthDate ?? '');
   const birthDateSelected = useMemo(() => parseIsoDate(birthDateIso || null), [birthDateIso]);
   const birthDateLabel = birthDateIso ? birthDateIso : 'Selecionar data';
+
+  // CPF input (nunca reexibe o valor real do banco)
+  const [cpfInput, setCpfInput] = useState<string>('');
 
   const [state, formAction] = useFormState<SaveState, FormData>(upsertUserAdministrativeProfileAction, {
     ok: true,
@@ -232,30 +246,36 @@ export function UserAdministrativeProfileForm(props: Props) {
             <CardTitle>Identidade Fiscal</CardTitle>
             <CardDescription>CPF declaratório para emissão de nota fiscal.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3">
+          <CardContent className="grid gap-4">
             <div className="text-sm text-muted-foreground">
               O CPF é informado pelo usuário e não é validado externamente.
             </div>
 
             {cpfMasked ? (
-              <Alert>
-                <AlertTitle>CPF cadastrado</AlertTitle>
-                <AlertDescription>
-                  {cpfMasked}. Para alterar, informe novamente abaixo.
-                </AlertDescription>
-              </Alert>
-            ) : null}
+              <div className="text-sm">
+                <span className="text-muted-foreground">CPF atual:</span>{' '}
+                <span className="font-medium text-foreground">{cpfMasked}</span>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                Nenhum CPF informado.
+              </div>
+            )}
 
             <div className="grid gap-2">
-              <Label htmlFor="cpf">CPF (opcional)</Label>
+              <Label htmlFor="cpf">Informar/alterar CPF (opcional)</Label>
               <Input
                 id="cpf"
                 name="cpf"
-                defaultValue=""
+                value={cpfInput}
+                onChange={(e) => setCpfInput(onlyCpfChars(e.target.value))}
+                placeholder="Digite o CPF (somente números ou com pontuação)"
                 inputMode="numeric"
-                placeholder="Somente números (11 dígitos)"
                 autoComplete="off"
               />
+              <div className="text-xs text-muted-foreground">
+                Dica: ao salvar, o CPF fica armazenado no banco; por segurança, não será reexibido completo.
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -280,9 +300,9 @@ export function UserAdministrativeProfileForm(props: Props) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Endereço Administrativo Validado</CardTitle>
+            <CardTitle>Endereço</CardTitle>
             <CardDescription>
-              O endereço é considerado validado por CEP (consulta no servidor). Dados retornados pelo servidor prevalecem.
+              Se você informar CEP, o contrato exige UF e Cidade (validação no domínio).
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -297,7 +317,7 @@ export function UserAdministrativeProfileForm(props: Props) {
                 <Input id="addressUf" name="addressUf" defaultValue={init.address?.uf ?? ''} placeholder="Ex.: DF" />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="addressCity">Município</Label>
+                <Label htmlFor="addressCity">Cidade</Label>
                 <Input id="addressCity" name="addressCity" defaultValue={init.address?.city ?? ''} placeholder="Ex.: Brasília" />
               </div>
             </div>
@@ -310,7 +330,7 @@ export function UserAdministrativeProfileForm(props: Props) {
                 <Input id="addressNeighborhood" name="addressNeighborhood" defaultValue={init.address?.neighborhood ?? ''} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="addressStreet">Logradouro</Label>
+                <Label htmlFor="addressStreet">Rua</Label>
                 <Input id="addressStreet" name="addressStreet" defaultValue={init.address?.street ?? ''} />
               </div>
             </div>
@@ -321,7 +341,7 @@ export function UserAdministrativeProfileForm(props: Props) {
                 <Input id="addressNumber" name="addressNumber" defaultValue={init.address?.number ?? ''} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="addressComplement">Complemento (opcional)</Label>
+                <Label htmlFor="addressComplement">Complemento</Label>
                 <Input id="addressComplement" name="addressComplement" defaultValue={init.address?.complement ?? ''} />
               </div>
             </div>
