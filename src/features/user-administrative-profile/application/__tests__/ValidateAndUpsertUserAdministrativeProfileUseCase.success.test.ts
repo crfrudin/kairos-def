@@ -1,53 +1,64 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import { ValidateAndUpsertUserAdministrativeProfileUseCase } from "../use-cases/ValidateAndUpsertUserAdministrativeProfileUseCase";
+import { ValidateAndUpsertUserAdministrativeProfileUseCase } from "@/features/user-administrative-profile/application/use-cases/ValidateAndUpsertUserAdministrativeProfileUseCase";
+import { Result } from "@/features/user-administrative-profile/application/ports/Result";
 
-import { FakeUserAdministrativeProfileRepository } from "./fakes/FakeUserAdministrativeProfileRepository";
-import { FakeUserAdministrativeProfileTransaction } from "./fakes/FakeUserAdministrativeProfileTransaction";
-import { FakeCpfValidationService } from "./fakes/FakeCpfValidationService";
-import { FakeAddressValidationService } from "./fakes/FakeAddressValidationService";
+import type { IUserAdministrativeProfileTransaction } from "@/features/user-administrative-profile/application/ports/IUserAdministrativeProfileTransaction";
+import type { IAddressValidationService } from "@/features/user-administrative-profile/application/ports/IAddressValidationService";
 
-describe("ValidateAndUpsertUserAdministrativeProfileUseCase — fluxo válido", () => {
-  it("valida externamente e persiste quando CPF e endereço são válidos", async () => {
-    const repo = new FakeUserAdministrativeProfileRepository();
+function makeTxSpy() {
+  const replaceFullContract = vi.fn(async () => undefined);
 
-    let persisted = false;
-    repo.onReplaceFullContract(async () => {
-      persisted = true;
-    });
+  const tx: IUserAdministrativeProfileTransaction = {
+    runInTransaction: async (fn) => {
+      await fn({ replaceFullContract } as any);
+    },
+  };
 
-    const tx = new FakeUserAdministrativeProfileTransaction(repo);
+  return { tx, replaceFullContract };
+}
 
-    const cpfValidator = new FakeCpfValidationService();
-    const addressValidator = new FakeAddressValidationService();
+describe("ValidateAndUpsertUserAdministrativeProfileUseCase — fluxo válido (V1)", () => {
+  it("valida externamente endereço (quando informado) e persiste; CPF é declaratório", async () => {
+    const { tx, replaceFullContract } = makeTxSpy();
 
-    const uc = new ValidateAndUpsertUserAdministrativeProfileUseCase(
-      tx,
-      cpfValidator,
-      addressValidator
-    );
+    const addressValidator: IAddressValidationService = {
+      validateAddress: vi.fn(async () => Result.ok({ valid: true as const })),
+    };
+
+    const uc = new ValidateAndUpsertUserAdministrativeProfileUseCase(tx, addressValidator);
+
+    const now = new Date().toISOString();
 
     const res = await uc.execute({
-      userId: "u1",
-      now: new Date().toISOString(),
+      userId: "userA",
+      now,
       profile: {
-        fullName: "Ruggeri Ramos",
-        cpf: "52998224725",
+        fullName: "Usuário A",
+        cpf: "12345678900", // CPF declaratório: permitido (11 dígitos)
         validatedAddress: {
-          cep: "01311-000",
+          cep: "01001000",
           uf: "SP",
           city: "São Paulo",
-          street: "Av. Paulista",
-          number: "1000",
-          neighborhood: "Bela Vista",
+          neighborhood: "Sé",
+          street: "Praça da Sé",
+          number: "1",
+          complement: null,
         },
       },
     } as any);
 
     expect(res.ok).toBe(true);
-    if (!res.ok) throw new Error("expected success");
+    if (!res.ok) throw new Error("expected ok");
 
-    expect(res.data.saved).toBe(true);
-    expect(persisted).toBe(true);
+    expect(addressValidator.validateAddress).toHaveBeenCalledTimes(1);
+    expect(replaceFullContract).toHaveBeenCalledTimes(1);
+
+    const call = replaceFullContract.mock.calls[0][0];
+    expect(call.userId).toBe("userA");
+    expect(call.now).toBe(now);
+    expect(call.contract.userId).toBe("userA");
+    expect(call.contract.profile.cpf).toBe("12345678900");
+    expect(call.contract.profile.validatedAddress).toBeTruthy();
   });
 });

@@ -1,76 +1,53 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import { ValidateAndUpsertUserAdministrativeProfileUseCase } from "../use-cases/ValidateAndUpsertUserAdministrativeProfileUseCase";
+import { ValidateAndUpsertUserAdministrativeProfileUseCase } from "@/features/user-administrative-profile/application/use-cases/ValidateAndUpsertUserAdministrativeProfileUseCase";
+import { Result } from "@/features/user-administrative-profile/application/ports/Result";
 
-import { FakeUserAdministrativeProfileRepository } from "./fakes/FakeUserAdministrativeProfileRepository";
-import { FakeUserAdministrativeProfileTransaction } from "./fakes/FakeUserAdministrativeProfileTransaction";
-import { FakeCpfValidationService } from "./fakes/FakeCpfValidationService";
-import { FakeAddressValidationService } from "./fakes/FakeAddressValidationService";
+import type { IUserAdministrativeProfileTransaction } from "@/features/user-administrative-profile/application/ports/IUserAdministrativeProfileTransaction";
+import type { IAddressValidationService } from "@/features/user-administrative-profile/application/ports/IAddressValidationService";
 
-describe("ValidateAndUpsertUserAdministrativeProfileUseCase — bloqueios externos", () => {
-  it("bloqueia quando CPF informado é inválido na validação externa", async () => {
-    const repo = new FakeUserAdministrativeProfileRepository();
-    const tx = new FakeUserAdministrativeProfileTransaction(repo);
+function makeTxSpy() {
+  const replaceFullContract = vi.fn(async () => undefined);
 
-    const cpfValidator = new FakeCpfValidationService();
-    cpfValidator.onValidate(async () => ({
-      ok: false,
-      error: { code: "CPF_EXTERNAL_INVALID" },
-    }));
+  const tx: IUserAdministrativeProfileTransaction = {
+    runInTransaction: async (fn) => {
+      await fn({ replaceFullContract } as any);
+    },
+  };
 
-    const addressValidator = new FakeAddressValidationService();
+  return { tx, replaceFullContract };
+}
 
-    const uc = new ValidateAndUpsertUserAdministrativeProfileUseCase(
-      tx,
-      cpfValidator,
-      addressValidator
-    );
-
-    const res = await uc.execute({
-      userId: "u1",
-      now: new Date().toISOString(),
-      profile: {
-        fullName: "Ruggeri Ramos",
-        cpf: "52998224725",
-      },
-    } as any);
-
-    expect(res.ok).toBe(false);
-    if (res.ok) throw new Error("expected error");
-
-    expect(res.error.code).toBe("CPF_EXTERNAL_INVALID");
-  });
-
+describe("ValidateAndUpsertUserAdministrativeProfileUseCase — bloqueios externos (V1)", () => {
   it("bloqueia quando endereço validado é inválido na validação externa", async () => {
-    const repo = new FakeUserAdministrativeProfileRepository();
-    const tx = new FakeUserAdministrativeProfileTransaction(repo);
+    const { tx, replaceFullContract } = makeTxSpy();
 
-    const cpfValidator = new FakeCpfValidationService();
+    const addressValidator: IAddressValidationService = {
+      validateAddress: vi.fn(async () =>
+        Result.err(
+          "ADDRESS_EXTERNAL_INVALID",
+          "Endereço inválido na validação externa.",
+          { provider: "FAKE", reason: "INVALID" }
+        )
+      ),
+    };
 
-    const addressValidator = new FakeAddressValidationService();
-    addressValidator.onValidate(async () => ({
-      ok: false,
-      error: { code: "ADDRESS_EXTERNAL_INVALID" },
-    }));
-
-    const uc = new ValidateAndUpsertUserAdministrativeProfileUseCase(
-      tx,
-      cpfValidator,
-      addressValidator
-    );
+    const uc = new ValidateAndUpsertUserAdministrativeProfileUseCase(tx, addressValidator);
 
     const res = await uc.execute({
-      userId: "u1",
+      userId: "userA",
       now: new Date().toISOString(),
       profile: {
-        fullName: "Ruggeri Ramos",
+        fullName: "Usuário A",
+        cpf: "00000000000", // CPF declaratório: permitido
         validatedAddress: {
-          cep: "01311-000",
+          cep: "01001000",
           uf: "SP",
           city: "São Paulo",
-          street: "Av. Paulista",
-          number: "1000",
-          neighborhood: "Bela Vista",
+          neighborhood: "Sé",
+          street: "Praça da Sé",
+          number: "1",
+          complement: null,
         },
       },
     } as any);
@@ -79,5 +56,45 @@ describe("ValidateAndUpsertUserAdministrativeProfileUseCase — bloqueios extern
     if (res.ok) throw new Error("expected error");
 
     expect(res.error.code).toBe("ADDRESS_EXTERNAL_INVALID");
+    expect(replaceFullContract).not.toHaveBeenCalled();
+  });
+
+  it("bloqueia quando serviço externo de endereço está indisponível", async () => {
+    const { tx, replaceFullContract } = makeTxSpy();
+
+    const addressValidator: IAddressValidationService = {
+      validateAddress: vi.fn(async () =>
+        Result.err(
+          "ADDRESS_EXTERNAL_UNAVAILABLE",
+          "Serviço externo de validação de endereço indisponível.",
+          { provider: "FAKE", reason: "TIMEOUT" }
+        )
+      ),
+    };
+
+    const uc = new ValidateAndUpsertUserAdministrativeProfileUseCase(tx, addressValidator);
+
+    const res = await uc.execute({
+      userId: "userA",
+      now: new Date().toISOString(),
+      profile: {
+        fullName: "Usuário A",
+        validatedAddress: {
+          cep: "01001000",
+          uf: "SP",
+          city: "São Paulo",
+          neighborhood: "Sé",
+          street: "Praça da Sé",
+          number: "1",
+          complement: null,
+        },
+      },
+    } as any);
+
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("expected error");
+
+    expect(res.error.code).toBe("ADDRESS_EXTERNAL_UNAVAILABLE");
+    expect(replaceFullContract).not.toHaveBeenCalled();
   });
 });
