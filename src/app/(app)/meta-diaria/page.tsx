@@ -2,8 +2,10 @@ import "server-only";
 
 import { headers } from "next/headers";
 
+import { Button } from "@/components/ui/button";
 import { createDailyPlanSsrComposition } from "@/core/composition/daily-plan.ssr.composition";
 
+import { regenerateDailyPlanAction } from "./actions";
 import { DailyStatusCard } from "./components/DailyStatusCard";
 import { DailyItemsList, type DailyPlanItemUi } from "./components/DailyItemsList";
 import { ExecuteDayForm } from "./components/ExecuteDayForm";
@@ -112,8 +114,6 @@ export default async function MetaDiariaPage() {
       const generated = await generateDailyPlanUseCase.execute({ userId, date: isoDate });
       plan = generated.plan;
     } catch {
-      // Sem "jeitinho": falha de geração normalmente indica pré-requisito ausente
-      // (perfil/matérias) ou inviabilidade normativa. Mostramos um fallback claro.
       return renderNoMaterializedPlan(isoDate);
     }
   }
@@ -136,6 +136,23 @@ export default async function MetaDiariaPage() {
       />
 
       <DailyItemsList reviews={lists.reviews} extras={lists.extras} theory={lists.theory} />
+
+      {canExecute ? (
+        <form
+          action={async () => {
+            "use server";
+            await regenerateDailyPlanAction({ date: plan.date });
+          }}
+        >
+          <Button type="submit" variant="outline" className="w-full">
+            Regenerar plano de hoje
+          </Button>
+        </form>
+      ) : (
+        <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+          Este dia já foi executado. Por regra normativa, o plano não pode ser regenerado.
+        </div>
+      )}
 
       <ExecuteDayForm isoDate={plan.date} disabled={!canExecute} />
     </div>

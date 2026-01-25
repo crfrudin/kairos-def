@@ -15,7 +15,6 @@ export async function executeDayAction(input: {
   const userId = h.get("x-kairos-user-id") ?? "";
 
   if (!userId) {
-    // Middleware garante autenticação; defensivo (fail-safe).
     throw new Error("Missing authenticated user claim (x-kairos-user-id).");
   }
 
@@ -27,6 +26,24 @@ export async function executeDayAction(input: {
     resultStatus: input.resultStatus,
     totalExecutedMinutes: input.totalExecutedMinutes,
     factualSummary: null,
+  });
+
+  revalidatePath("/meta-diaria");
+}
+
+export async function regenerateDailyPlanAction(input: { date: string }) {
+  const h = await headers();
+  const userId = h.get("x-kairos-user-id") ?? "";
+
+  if (!userId) {
+    throw new Error("Missing authenticated user claim (x-kairos-user-id).");
+  }
+
+  const { regenerateDailyPlanUseCase } = createDailyPlanSsrComposition();
+
+  await regenerateDailyPlanUseCase.execute({
+    userId,
+    date: input.date,
   });
 
   revalidatePath("/meta-diaria");
