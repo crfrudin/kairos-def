@@ -43,49 +43,83 @@ function buildUiLists(plan: DailyPlanDTO): {
   return { reviews, extras, theory };
 }
 
+function renderNotAuthenticated() {
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <div className="rounded-lg border p-6">
+        <div className="text-lg font-semibold">Meta Diária</div>
+        <div className="text-sm text-muted-foreground">Falha de autenticação. Volte ao login.</div>
+      </div>
+    </div>
+  );
+}
+
+function renderNoMaterializedPlan(isoDate: string) {
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <DailyStatusCard
+        dateLabel={`Hoje (${formatIsoDatePtBr(isoDate)})`}
+        status="PLANNED"
+        plannedDurationLabel="—"
+        availableDurationLabel="—"
+      />
+
+      <div className="rounded-lg border p-6 space-y-2">
+        <div className="text-sm font-semibold">Nenhum plano materializado</div>
+        <div className="text-sm text-muted-foreground">
+          O sistema não conseguiu materializar o plano diário para esta data.
+        </div>
+
+        <div className="pt-2 text-sm">
+          <div className="font-medium">Possíveis causas:</div>
+          <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+            <li>Perfil ainda não configurado</li>
+            <li>Nenhuma matéria cadastrada</li>
+            <li>Regras atuais tornam o dia inviável</li>
+          </ul>
+        </div>
+
+        <div className="pt-2 flex flex-wrap gap-2">
+          <a className="underline text-sm" href="/perfil">
+            Ir para Perfil
+          </a>
+          <a className="underline text-sm" href="/materias">
+            Ir para Matérias
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function MetaDiariaPage() {
   const h = await headers();
   const userId = h.get("x-kairos-user-id") ?? "";
 
-  if (!userId) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-6 p-6">
-        <div className="rounded-lg border p-6">
-          <div className="text-lg font-semibold">Meta Diária</div>
-          <div className="text-sm text-muted-foreground">
-            Falha de autenticação. Volte ao login.
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!userId) return renderNotAuthenticated();
 
   const isoDate = getTodayIsoDateInSaoPaulo();
-  const { getDailyPlanUseCase } = createDailyPlanSsrComposition();
+  const { getDailyPlanUseCase, generateDailyPlanUseCase } = createDailyPlanSsrComposition();
 
-  const { plan } = await getDailyPlanUseCase.execute({
-    userId,
-    date: isoDate,
-  });
+  // 1) Tenta ler
+  const { plan: existing } = await getDailyPlanUseCase.execute({ userId, date: isoDate });
+
+  // 2) Se não existir, materializa (SSR, determinístico)
+  let plan: DailyPlanDTO | null = existing ?? null;
 
   if (!plan) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-6 p-6">
-        <DailyStatusCard
-          dateLabel={`Hoje (${formatIsoDatePtBr(isoDate)})`}
-          status="PLANNED"
-          plannedDurationLabel="—"
-          availableDurationLabel="—"
-        />
+    try {
+      const generated = await generateDailyPlanUseCase.execute({ userId, date: isoDate });
+      plan = generated.plan;
+    } catch {
+      // Sem "jeitinho": falha de geração normalmente indica pré-requisito ausente
+      // (perfil/matérias) ou inviabilidade normativa. Mostramos um fallback claro.
+      return renderNoMaterializedPlan(isoDate);
+    }
+  }
 
-        <div className="rounded-lg border p-6">
-          <div className="text-sm font-semibold">Nenhum plano materializado</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            O backend ainda não materializou o plano diário para esta data.
-          </div>
-        </div>
-      </div>
-    );
+  if (!plan) {
+    return renderNoMaterializedPlan(isoDate);
   }
 
   const plannedTotal = plan.reviewMinutes + plan.extrasMinutes + plan.theoryMinutes;
