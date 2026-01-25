@@ -6,7 +6,24 @@ import { UserAdministrativeProfileForm } from './UserAdministrativeProfileForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-export default async function AjustesPage() {
+type Reason = 'billing_profile_incomplete' | 'legal_not_accepted';
+
+function normalizeReason(v: unknown): Reason | null {
+  const s = String(v ?? '').trim();
+  if (s === 'billing_profile_incomplete') return 'billing_profile_incomplete';
+  if (s === 'legal_not_accepted') return 'legal_not_accepted';
+  return null;
+}
+
+export default async function AjustesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const rawReason = Array.isArray(sp.reason) ? sp.reason[0] : sp.reason;
+  const reason = normalizeReason(rawReason);
+
   const loaded = await loadUserAdministrativeProfileAction();
 
   if (!loaded.ok) {
@@ -31,7 +48,7 @@ export default async function AjustesPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <UserAdministrativeProfileForm initialProfile={loaded.profile} completeness={loaded.completeness} />
+      <UserAdministrativeProfileForm initialProfile={loaded.profile} completeness={loaded.completeness} reason={reason} />
     </main>
   );
 }

@@ -10,6 +10,7 @@ type CheckoutApiResponse =
       ok: false;
       error:
         | "BILLING_PROFILE_INCOMPLETE"
+        | "LEGAL_NOT_ACCEPTED"
         | "AUTH_REQUIRED"
         | "FORBIDDEN"
         | "BAD_REQUEST"
@@ -36,28 +37,35 @@ export function CheckoutButtons() {
 
       const data = (await res.json().catch(() => null)) as CheckoutApiResponse | null;
 
-      // Gate: cadastro fiscal/administrativo incompleto -> manda para /ajustes
-      if (
-        res.status === 422 &&
-        data &&
-        "ok" in data &&
-        data.ok === false &&
-        data.error === "BILLING_PROFILE_INCOMPLETE"
-      ) {
-        window.location.href = toNextUrl("/ajustes", { reason: "billing_profile_incomplete" });
-        return;
-      }
+      // 422: gates normativos -> manda para /ajustes com reason adequado
+      if (res.status === 422 && data && data.ok === false) {
+        if (data.error === "BILLING_PROFILE_INCOMPLETE") {
+          window.location.href = toNextUrl("/ajustes", { reason: "billing_profile_incomplete" });
+          return;
+        }
 
-      if (res.status === 401 && data && "ok" in data && data.ok === false && data.error === "AUTH_REQUIRED") {
-        window.location.href = toNextUrl("/login");
-        return;
-      }
+        if (data.error === "LEGAL_NOT_ACCEPTED") {
+          window.location.href = toNextUrl("/ajustes", { reason: "legal_not_accepted" });
+          return;
+        }
 
-      if (!res.ok || !data || !("ok" in data)) {
         window.location.href = "/assinatura?checkout=error";
         return;
       }
 
+      // 401: precisa autenticar
+      if (res.status === 401 && data && data.ok === false && data.error === "AUTH_REQUIRED") {
+        window.location.href = toNextUrl("/login");
+        return;
+      }
+
+      // Qualquer erro inesperado
+      if (!res.ok || !data) {
+        window.location.href = "/assinatura?checkout=error";
+        return;
+      }
+
+      // Só prossegue se ok=true e tiver url
       if (data.ok !== true || !data.url) {
         window.location.href = "/assinatura?checkout=error";
         return;
@@ -71,7 +79,11 @@ export function CheckoutButtons() {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button type="button" onClick={() => void startCheckout("MONTHLY")} aria-label="Assinar plano mensal (Stripe Checkout)">
+      <Button
+        type="button"
+        onClick={() => void startCheckout("MONTHLY")}
+        aria-label="Assinar plano mensal (Stripe Checkout)"
+      >
         Assinar mensal (TEST)
       </Button>
 

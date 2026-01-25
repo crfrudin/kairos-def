@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 
@@ -22,6 +23,7 @@ import { Calendar } from '@/components/ui/calendar';
 type Props = {
   initialProfile: UserAdministrativeProfilePrimitives | null;
   completeness: { exists: boolean; isComplete: boolean; validation?: { domainCode: string; message: string } | null };
+  reason?: 'billing_profile_incomplete' | 'legal_not_accepted' | null;
 };
 
 type SaveState =
@@ -160,9 +162,8 @@ type ViaCepResponse =
   | ViaCepOk;
 
 function isViaCepOk(data: ViaCepResponse): data is ViaCepOk {
-  return !(typeof data === "object" && data !== null && "erro" in data && (data as any).erro === true);
+  return !(typeof data === 'object' && data !== null && 'erro' in data && (data as any).erro === true);
 }
-
 
 export function UserAdministrativeProfileForm(props: Props) {
   const init = useMemo(() => normalizeInit(props.initialProfile), [props.initialProfile]);
@@ -190,10 +191,17 @@ export function UserAdministrativeProfileForm(props: Props) {
   const [number, setNumber] = useState<string>(init.address?.number ?? '');
   const [complement, setComplement] = useState<string>(init.address?.complement ?? '');
 
-  // Preferências (VISÍVEL) — mantém como combinado
+  // Preferências (VISÍVEL)
   const [preferredLanguage, setPreferredLanguage] = useState<string>(init.preferences?.preferredLanguage ?? '');
   const [timeZone, setTimeZone] = useState<string>(init.preferences?.timeZone ?? '');
   const [consentChecked, setConsentChecked] = useState<boolean>(Boolean(init.preferences?.communicationsConsent ?? false));
+
+  // ETAPA 5 — Aceites (controlados; enviados via hidden inputs)
+  const [acceptTerms, setAcceptTerms] = useState<boolean>(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState<boolean>(false);
+
+  // Client UA (LGPD: hash no server; aqui só coletamos string)
+  const [clientUa, setClientUa] = useState<string>('');
 
   const [viaCepState, setViaCepState] = useState<'idle' | 'loading' | 'ok' | 'invalid'>('idle');
 
@@ -224,10 +232,9 @@ export function UserAdministrativeProfileForm(props: Props) {
       const data = (await res.json().catch(() => null)) as ViaCepResponse | null;
 
       if (!res.ok || !data || !isViaCepOk(data)) {
-  setViaCepState('invalid');
-  return;
-}
-
+        setViaCepState('invalid');
+        return;
+      }
 
       const nextUf = (data.uf ?? '').toUpperCase();
       const nextCity = data.localidade ?? '';
@@ -253,6 +260,14 @@ export function UserAdministrativeProfileForm(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cepDigits]);
 
+  useEffect(() => {
+    try {
+      setClientUa(String(navigator.userAgent ?? '').slice(0, 512));
+    } catch {
+      setClientUa('');
+    }
+  }, []);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -265,6 +280,24 @@ export function UserAdministrativeProfileForm(props: Props) {
             <span className="text-muted-foreground">Status:</span>
             <span className={statusClass}>{completenessLabel}</span>
           </div>
+
+          {props.reason === 'billing_profile_incomplete' ? (
+            <Alert>
+              <AlertTitle>Complete seus dados para assinar</AlertTitle>
+              <AlertDescription>
+                Para iniciar o checkout, precisamos do CPF e do endereço completo (dados fiscais/nota).
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {props.reason === 'legal_not_accepted' ? (
+            <Alert>
+              <AlertTitle>Aceite obrigatório</AlertTitle>
+              <AlertDescription>
+                Para assinar o Premium, é obrigatório aceitar os Termos de Uso e a Política de Privacidade.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {!props.completeness.isComplete && props.completeness.validation ? (
             <Alert>
@@ -541,7 +574,7 @@ export function UserAdministrativeProfileForm(props: Props) {
           </CardContent>
         </Card>
 
-        {/* Preferências (VISÍVEL, como combinado) */}
+        {/* Preferências */}
         <Card>
           <CardHeader>
             <CardTitle>Preferências</CardTitle>
@@ -578,6 +611,54 @@ export function UserAdministrativeProfileForm(props: Props) {
               <Label htmlFor="communicationsConsent">Aceito comunicações administrativas</Label>
               <input type="hidden" name="communicationsConsent" value={consentChecked ? 'true' : ''} />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Termos e Privacidade (ETAPA 5) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Termos e Privacidade</CardTitle>
+            <CardDescription>Obrigatório para assinar o Premium.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="acceptTerms"
+                checked={acceptTerms}
+                onCheckedChange={(v) => setAcceptTerms(Boolean(v))}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="acceptTerms">
+                  Li e aceito os{' '}
+                  <Link className="underline" href="/termos-de-uso" target="_blank" rel="noreferrer">
+                    Termos de Uso
+                  </Link>
+                </Label>
+                <div className="text-xs text-muted-foreground">O aceite é registrado com versão e timestamp.</div>
+              </div>
+            </div>
+            <input type="hidden" name="acceptTerms" value={acceptTerms ? 'true' : ''} />
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="acceptPrivacy"
+                checked={acceptPrivacy}
+                onCheckedChange={(v) => setAcceptPrivacy(Boolean(v))}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="acceptPrivacy">
+                  Li e aceito a{' '}
+                  <Link className="underline" href="/politica-de-privacidade" target="_blank" rel="noreferrer">
+                    Política de Privacidade
+                  </Link>
+                </Label>
+                <div className="text-xs text-muted-foreground">O aceite é registrado com versão e timestamp.</div>
+              </div>
+            </div>
+            <input type="hidden" name="acceptPrivacy" value={acceptPrivacy ? 'true' : ''} />
+
+            {/* Metadados (opcionais) para hashing no server; IP não é coletado no client */}
+            <input type="hidden" name="client_ua" value={clientUa} />
           </CardContent>
         </Card>
 

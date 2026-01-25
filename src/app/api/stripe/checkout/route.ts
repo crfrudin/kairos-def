@@ -6,6 +6,8 @@ import Stripe from "stripe";
 import { createSupabaseServerClient } from "@/core/clients/createSupabaseServerClient";
 
 import { SupabaseUserAdministrativeProfileRepository } from "@/features/user-administrative-profile/infra/SupabaseUserAdministrativeProfileRepository";
+import { SupabaseLegalConsentRepository } from "@/features/legal-consent/infra/SupabaseLegalConsentRepository";
+import { CheckLegalConsentsUseCase } from "@/features/legal-consent/application/use-cases/CheckLegalConsentsUseCase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +80,14 @@ function digitsOnly(v: unknown): string {
   return out;
 }
 
+function getTermsVersion(): string {
+  return String(process.env.KAIROS_TERMS_VERSION ?? "").trim() || "2026-01-24";
+}
+
+function getPrivacyVersion(): string {
+  return String(process.env.KAIROS_PRIVACY_VERSION ?? "").trim() || "2026-01-24";
+}
+
 /**
  * ETAPA 4 — Gate de assinatura (Premium)
  *
@@ -146,15 +156,39 @@ export async function POST(req: Request) {
     const userId = await requireUserIdFromCookies();
 
     // ✅ Gate premium: CPF + endereço completo
-    const billingGate = await ensureBillingProfileComplete(userId);
-    if (!billingGate.ok) {
-      const isDev = process.env.NODE_ENV !== "production";
-      return json(422, {
-        ok: false,
-        error: "BILLING_PROFILE_INCOMPLETE",
-        ...(isDev ? { validation: { missing: billingGate.missing } } : {}),
-      });
-    }
+const billingGate = await ensureBillingProfileComplete(userId);
+if (!billingGate.ok) {
+  const isDev = process.env.NODE_ENV !== "production";
+  return json(422, {
+    ok: false,
+    error: "BILLING_PROFILE_INCOMPLETE",
+    ...(isDev ? { validation: { missing: billingGate.missing } } : {}),
+  });
+}
+// ✅ ETAPA 5 — Gate legal: termos + privacidade aceitos (versão atual)
+const legalRepo = new SupabaseLegalConsentRepository();
+const ucLegal = new CheckLegalConsentsUseCase(legalRepo);
+
+const legalCheck = await ucLegal.execute({
+  userId,
+  required: [
+    { docType: "TERMS", docVersion: getTermsVersion() },
+    { docType: "PRIVACY", docVersion: getPrivacyVersion() },
+  ],
+});
+
+if (!legalCheck.ok) {
+  throw new Error(`LEGAL_CHECK_FAILED:${legalCheck.message}`);
+}
+
+if (legalCheck.missing.length) {
+  const isDev = process.env.NODE_ENV !== "production";
+  return json(422, {
+    ok: false,
+    error: "LEGAL_NOT_ACCEPTED",
+    ...(isDev ? { validation: { missing: legalCheck.missing } } : {}),
+  });
+}
 
     const priceId = billingPeriod === "MONTHLY" ? monthlyPriceId : annualPriceId;
 

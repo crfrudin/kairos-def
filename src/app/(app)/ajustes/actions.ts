@@ -7,6 +7,9 @@ import { createUserAdministrativeProfileSsrComposition } from '@/core/compositio
 
 import type { UserAdministrativeProfilePrimitives } from '@/features/user-administrative-profile/domain/entities/UserAdministrativeProfile';
 
+import { SupabaseLegalConsentRepository } from '@/features/legal-consent/infra/SupabaseLegalConsentRepository';
+import { RecordLegalConsentUseCase } from '@/features/legal-consent/application/use-cases/RecordLegalConsentUseCase';
+
 type LoadState =
   | {
       ok: true;
@@ -21,6 +24,23 @@ type SaveState =
 
 function isoTimestampNow(): string {
   return new Date().toISOString();
+}
+
+function getTermsVersion(): string {
+  return String(process.env.KAIROS_TERMS_VERSION ?? '').trim() || '2026-01-24';
+}
+
+function getPrivacyVersion(): string {
+  return String(process.env.KAIROS_PRIVACY_VERSION ?? '').trim() || '2026-01-24';
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  const bytes = new Uint8Array(buf);
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out;
 }
 
 function safeString(v: FormDataEntryValue | null): string {
@@ -77,7 +97,7 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
   // CPF (declaratório)
   const cpfDigits = digitsOnlyOrNull(safeString(fd.get('cpf')));
 
-  // Endereço (Fase 6)
+  // Endereço
   const cep = trimToNull(safeString(fd.get('addressCep')));
   const uf = trimToNull(safeString(fd.get('addressUf')));
   const city = trimToNull(safeString(fd.get('addressCity')));
@@ -90,9 +110,8 @@ function buildProfileFromFormData(fd: FormData): UserAdministrativeProfilePrimit
   const address = anyAddressProvided ? { cep, uf, city, neighborhood, street, number, complement } : null;
 
   /**
-   * IMPORTANTE:
    * validatedAddress dispara validação EXTERNA no ValidateAndUpsert...UseCase.
-   * No /ajustes atual, não emitimos validatedAddress (vamos religar na ETAPA 4, com regra fiscal do checkout).
+   * No /ajustes atual, NÃO emitimos validatedAddress.
    */
   const validatedAddress = null;
 
@@ -152,18 +171,16 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
     const userId = await requireAuthenticatedUserId();
     const { ucGet, ucValidateAndUpsert, ucCheckCompleteness } = createUserAdministrativeProfileSsrComposition();
 
-    // Fonte de verdade do servidor (para preservar campos ausentes no POST)
+    // Fonte de verdade do servidor (preservação de campos ausentes no POST)
     const current = await ucGet.execute({ userId });
     const currentProfile = current.ok ? current.data.profile : null;
 
     const profile = buildProfileFromFormData(formData);
 
     /**
-     * PRESERVAÇÃO SEM PERDA DE DADOS (ETAPA 3)
-     * - O contrato é substituição integral (replaceFullContract).
-     * - Se um campo NÃO veio no FormData (porque UI ocultou ou não renderizou o input),
-     *   preservamos o valor atual do servidor.
-     * - Se o campo veio vazio, isso significa intenção de limpar => NÃO preservamos.
+     * PRESERVAÇÃO SEM PERDA DE DADOS
+     * - Se o campo NÃO veio no FormData (UI ocultou/não renderizou), preserva do servidor.
+     * - Se veio vazio, é intenção de limpar => não preserva.
      */
 
     // CPF: preserva APENAS se o input nem veio no POST.
@@ -201,7 +218,7 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
       profile.secondaryEmail = currentProfile?.secondaryEmail ?? null;
     }
 
-    // Identidade (para evitar perdas se algum campo for removido da UI)
+    // Identidade
     if (!hasField(formData, 'socialName')) {
       profile.socialName = currentProfile?.socialName ?? null;
     }
@@ -212,8 +229,7 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
       profile.gender = currentProfile?.gender ?? null;
     }
 
-    // validatedAddress: hoje o /ajustes não emite, então preserva se já existir.
-    // (Isso evita apagar caso já esteja preenchido por outra rotina/fase.)
+    // validatedAddress: /ajustes não emite; preserva se já existir no servidor.
     if (currentProfile?.validatedAddress && profile.validatedAddress === null) {
       profile.validatedAddress = currentProfile.validatedAddress;
     }
@@ -227,6 +243,49 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
     if (!saved.ok) {
       console.error('[ajustes] ucValidateAndUpsert failed', saved.error);
       return { ok: false, message: 'Não foi possível salvar. Verifique os campos e tente novamente.' };
+    }
+
+    // ETAPA 5 — registrar aceite de termos / privacidade (append-only) — NO-BREAK
+    const acceptTerms = safeBool(formData.get('acceptTerms')) === true;
+    const acceptPrivacy = safeBool(formData.get('acceptPrivacy')) === true;
+
+    if (acceptTerms || acceptPrivacy) {
+      try {
+        const repo = new SupabaseLegalConsentRepository();
+        const ucRecord = new RecordLegalConsentUseCase(repo);
+
+        const acceptedAtIso = isoTimestampNow();
+
+        // Hashes (LGPD): não armazenamos UA em claro; IP não é coletado no client.
+        const ua = safeString(formData.get('client_ua'));
+        const uaHash = ua ? await sha256Hex(ua) : null;
+
+        if (acceptTerms) {
+          await ucRecord.execute({
+            userId,
+            docType: 'TERMS',
+            docVersion: getTermsVersion(),
+            acceptedAtIso,
+            ipHash: null,
+            userAgentHash: uaHash,
+            metadata: { source: 'ajustes' },
+          });
+        }
+
+        if (acceptPrivacy) {
+          await ucRecord.execute({
+            userId,
+            docType: 'PRIVACY',
+            docVersion: getPrivacyVersion(),
+            acceptedAtIso,
+            ipHash: null,
+            userAgentHash: uaHash,
+            metadata: { source: 'ajustes' },
+          });
+        }
+      } catch (e: unknown) {
+        console.error('[ajustes] legal consent record failed (no-break)', errMsg(e), e);
+      }
     }
 
     const checked = await ucCheckCompleteness.execute({ userId });
