@@ -23,12 +23,22 @@ import { Calendar } from '@/components/ui/calendar';
 type Props = {
   initialProfile: UserAdministrativeProfilePrimitives | null;
   completeness: { exists: boolean; isComplete: boolean; validation?: { domainCode: string; message: string } | null };
+  legal: {
+    termsVersion: string;
+    privacyVersion: string;
+    termsAccepted: boolean;
+    privacyAccepted: boolean;
+  };
+
+  /**
+   * NOTE:
+   * Você usa props.reason no JSX abaixo, então ele precisa existir aqui.
+   * Se sua page ainda não passa, mantenha optional e depois wire na page.
+   */
   reason?: 'billing_profile_incomplete' | 'legal_not_accepted' | null;
 };
 
-type SaveState =
-  | { ok: true; message: string }
-  | { ok: false; message: string };
+type SaveState = { ok: true; message: string } | { ok: false; message: string };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -146,7 +156,33 @@ function formatPhoneBr(digitsRaw: string): { formatted: string; digits: string }
 }
 
 const UF_OPTIONS = [
-  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+  'AC',
+  'AL',
+  'AP',
+  'AM',
+  'BA',
+  'CE',
+  'DF',
+  'ES',
+  'GO',
+  'MA',
+  'MT',
+  'MS',
+  'MG',
+  'PA',
+  'PB',
+  'PR',
+  'PE',
+  'PI',
+  'RJ',
+  'RN',
+  'RS',
+  'RO',
+  'RR',
+  'SC',
+  'SP',
+  'SE',
+  'TO',
 ] as const;
 
 type ViaCepOk = {
@@ -157,9 +193,7 @@ type ViaCepOk = {
   logradouro?: string;
 };
 
-type ViaCepResponse =
-  | { erro: true }
-  | ViaCepOk;
+type ViaCepResponse = { erro: true } | ViaCepOk;
 
 function isViaCepOk(data: ViaCepResponse): data is ViaCepOk {
   return !(typeof data === 'object' && data !== null && 'erro' in data && (data as any).erro === true);
@@ -167,6 +201,31 @@ function isViaCepOk(data: ViaCepResponse): data is ViaCepOk {
 
 export function UserAdministrativeProfileForm(props: Props) {
   const init = useMemo(() => normalizeInit(props.initialProfile), [props.initialProfile]);
+
+  // ETAPA 5 — já aceitos (por versão atual)
+  const termsAlreadyAccepted = props.legal?.termsAccepted === true;
+  const privacyAlreadyAccepted = props.legal?.privacyAccepted === true;
+
+  // ETAPA 5 — estado controlado (travado em true se já aceito)
+  const [acceptTerms, setAcceptTerms] = useState<boolean>(termsAlreadyAccepted);
+  const [acceptPrivacy, setAcceptPrivacy] = useState<boolean>(privacyAlreadyAccepted);
+
+  // Client UA (LGPD: hash no server; aqui só coletamos string)
+  const [clientUa, setClientUa] = useState<string>('');
+
+  useEffect(() => {
+    // Se o server diz que já aceitou, trava em true (evita qualquer desmarcação)
+    if (termsAlreadyAccepted) setAcceptTerms(true);
+    if (privacyAlreadyAccepted) setAcceptPrivacy(true);
+  }, [termsAlreadyAccepted, privacyAlreadyAccepted]);
+
+  useEffect(() => {
+    try {
+      setClientUa(String(navigator.userAgent ?? '').slice(0, 512));
+    } catch {
+      setClientUa('');
+    }
+  }, []);
 
   const [genderCode, setGenderCode] = useState<string>(init.gender?.code ?? '');
 
@@ -195,13 +254,6 @@ export function UserAdministrativeProfileForm(props: Props) {
   const [preferredLanguage, setPreferredLanguage] = useState<string>(init.preferences?.preferredLanguage ?? '');
   const [timeZone, setTimeZone] = useState<string>(init.preferences?.timeZone ?? '');
   const [consentChecked, setConsentChecked] = useState<boolean>(Boolean(init.preferences?.communicationsConsent ?? false));
-
-  // ETAPA 5 — Aceites (controlados; enviados via hidden inputs)
-  const [acceptTerms, setAcceptTerms] = useState<boolean>(false);
-  const [acceptPrivacy, setAcceptPrivacy] = useState<boolean>(false);
-
-  // Client UA (LGPD: hash no server; aqui só coletamos string)
-  const [clientUa, setClientUa] = useState<string>('');
 
   const [viaCepState, setViaCepState] = useState<'idle' | 'loading' | 'ok' | 'invalid'>('idle');
 
@@ -260,14 +312,6 @@ export function UserAdministrativeProfileForm(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cepDigits]);
 
-  useEffect(() => {
-    try {
-      setClientUa(String(navigator.userAgent ?? '').slice(0, 512));
-    } catch {
-      setClientUa('');
-    }
-  }, []);
-
   return (
     <div className="space-y-4">
       <Card>
@@ -284,18 +328,14 @@ export function UserAdministrativeProfileForm(props: Props) {
           {props.reason === 'billing_profile_incomplete' ? (
             <Alert>
               <AlertTitle>Complete seus dados para assinar</AlertTitle>
-              <AlertDescription>
-                Para iniciar o checkout, precisamos do CPF e do endereço completo (dados fiscais/nota).
-              </AlertDescription>
+              <AlertDescription>Para iniciar o checkout, precisamos do CPF e do endereço completo (dados fiscais/nota).</AlertDescription>
             </Alert>
           ) : null}
 
           {props.reason === 'legal_not_accepted' ? (
             <Alert>
               <AlertTitle>Aceite obrigatório</AlertTitle>
-              <AlertDescription>
-                Para assinar o Premium, é obrigatório aceitar os Termos de Uso e a Política de Privacidade.
-              </AlertDescription>
+              <AlertDescription>Para assinar o Premium, é obrigatório aceitar os Termos de Uso e a Política de Privacidade.</AlertDescription>
             </Alert>
           ) : null}
 
@@ -484,12 +524,8 @@ export function UserAdministrativeProfileForm(props: Props) {
               />
               <input type="hidden" name="addressCep" value={cepDigits || ''} />
 
-              {viaCepState === 'loading' ? (
-                <div className="text-xs text-muted-foreground">Buscando endereço pelo CEP...</div>
-              ) : null}
-              {viaCepState === 'invalid' ? (
-                <div className="text-xs text-muted-foreground">CEP não encontrado (ViaCEP).</div>
-              ) : null}
+              {viaCepState === 'loading' ? <div className="text-xs text-muted-foreground">Buscando endereço pelo CEP...</div> : null}
+              {viaCepState === 'invalid' ? <div className="text-xs text-muted-foreground">CEP não encontrado (ViaCEP).</div> : null}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -603,11 +639,7 @@ export function UserAdministrativeProfileForm(props: Props) {
             </div>
 
             <div className="flex items-center gap-2">
-              <Checkbox
-                id="communicationsConsent"
-                checked={consentChecked}
-                onCheckedChange={(v) => setConsentChecked(Boolean(v))}
-              />
+              <Checkbox id="communicationsConsent" checked={consentChecked} onCheckedChange={(v) => setConsentChecked(Boolean(v))} />
               <Label htmlFor="communicationsConsent">Aceito comunicações administrativas</Label>
               <input type="hidden" name="communicationsConsent" value={consentChecked ? 'true' : ''} />
             </div>
@@ -625,8 +657,10 @@ export function UserAdministrativeProfileForm(props: Props) {
               <Checkbox
                 id="acceptTerms"
                 checked={acceptTerms}
+                disabled={termsAlreadyAccepted}
                 onCheckedChange={(v) => setAcceptTerms(Boolean(v))}
               />
+
               <div className="space-y-1">
                 <Label htmlFor="acceptTerms">
                   Li e aceito os{' '}
@@ -634,17 +668,31 @@ export function UserAdministrativeProfileForm(props: Props) {
                     Termos de Uso
                   </Link>
                 </Label>
+
                 <div className="text-xs text-muted-foreground">O aceite é registrado com versão e timestamp.</div>
+
+                {termsAlreadyAccepted ? (
+                  <div className="text-xs text-muted-foreground">
+                    ✅ Já aceito (versão {props.legal.termsVersion}). Não é possível desmarcar.
+                  </div>
+                ) : null}
               </div>
             </div>
-            <input type="hidden" name="acceptTerms" value={acceptTerms ? 'true' : ''} />
+
+            <input
+              type="hidden"
+              name="acceptTerms"
+              value={acceptTerms || termsAlreadyAccepted ? 'true' : ''}
+            />
 
             <div className="flex items-start gap-2">
               <Checkbox
                 id="acceptPrivacy"
                 checked={acceptPrivacy}
+                disabled={privacyAlreadyAccepted}
                 onCheckedChange={(v) => setAcceptPrivacy(Boolean(v))}
               />
+
               <div className="space-y-1">
                 <Label htmlFor="acceptPrivacy">
                   Li e aceito a{' '}
@@ -652,10 +700,22 @@ export function UserAdministrativeProfileForm(props: Props) {
                     Política de Privacidade
                   </Link>
                 </Label>
+
                 <div className="text-xs text-muted-foreground">O aceite é registrado com versão e timestamp.</div>
+
+                {privacyAlreadyAccepted ? (
+                  <div className="text-xs text-muted-foreground">
+                    ✅ Já aceito (versão {props.legal.privacyVersion}). Não é possível desmarcar.
+                  </div>
+                ) : null}
               </div>
             </div>
-            <input type="hidden" name="acceptPrivacy" value={acceptPrivacy ? 'true' : ''} />
+
+            <input
+              type="hidden"
+              name="acceptPrivacy"
+              value={acceptPrivacy || privacyAlreadyAccepted ? 'true' : ''}
+            />
 
             {/* Metadados (opcionais) para hashing no server; IP não é coletado no client */}
             <input type="hidden" name="client_ua" value={clientUa} />

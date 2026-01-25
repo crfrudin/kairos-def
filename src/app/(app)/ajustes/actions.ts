@@ -15,6 +15,12 @@ type LoadState =
       ok: true;
       profile: UserAdministrativeProfilePrimitives | null;
       completeness: { exists: boolean; isComplete: boolean; validation?: { domainCode: string; message: string } | null };
+      legal: {
+        termsVersion: string;
+        privacyVersion: string;
+        termsAccepted: boolean;
+        privacyAccepted: boolean;
+      };
     }
   | { ok: false; error: string };
 
@@ -155,11 +161,38 @@ export async function loadUserAdministrativeProfileAction(): Promise<LoadState> 
       return { ok: false, error: 'Falha ao verificar status do cadastro.' };
     }
 
+        // ETAPA 5 — Status de termos/privacidade (por versão atual)
+    const termsVersion = getTermsVersion();
+    const privacyVersion = getPrivacyVersion();
+
+    let termsAccepted = false;
+    let privacyAccepted = false;
+
+    try {
+      const repo = new SupabaseLegalConsentRepository();
+      const [t, p] = await Promise.all([
+        repo.hasAccepted(userId, 'TERMS', termsVersion),
+        repo.hasAccepted(userId, 'PRIVACY', privacyVersion),
+      ]);
+      termsAccepted = t;
+      privacyAccepted = p;
+    } catch (e: unknown) {
+      // NO-BREAK: não impede abrir /ajustes (apenas não “trava” o checkbox)
+      console.error('[ajustes] legal consent status failed (no-break)', errMsg(e), e);
+    }
+
     return {
       ok: true,
       profile: got.data.profile,
       completeness: checked.data,
+      legal: {
+        termsVersion,
+        privacyVersion,
+        termsAccepted,
+        privacyAccepted,
+      },
     };
+
   } catch (e: unknown) {
     console.error('[ajustes] loadUserAdministrativeProfileAction exception', errMsg(e), e);
     return { ok: false, error: 'Falha ao carregar os dados administrativos.' };
@@ -183,10 +216,13 @@ export async function upsertUserAdministrativeProfileAction(_prev: SaveState, fo
      * - Se veio vazio, é intenção de limpar => não preserva.
      */
 
-    // CPF: preserva APENAS se o input nem veio no POST.
-    if (!hasField(formData, 'cpf') && currentProfile?.cpf) {
-      profile.cpf = currentProfile.cpf;
-    }
+    // CPF: o input sempre vem do form.
+// Regra: se vier vazio (null), preserva o CPF do servidor (não reexibe no client).
+// (Para "limpar" CPF de propósito, criamos um fluxo dedicado no futuro; aqui não permitimos limpeza acidental.)
+if (currentProfile?.cpf && !profile.cpf) {
+  profile.cpf = currentProfile.cpf;
+}
+
 
     // Preferências: preserva se nenhum campo de preferência veio no POST.
     const prefFields = ['preferredLanguage', 'timeZone', 'communicationsConsent'] as const;

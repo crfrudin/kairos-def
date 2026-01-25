@@ -48,7 +48,11 @@ export default async function AjustesPage({
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <UserAdministrativeProfileForm initialProfile={loaded.profile} completeness={loaded.completeness} reason={reason} />
+<UserAdministrativeProfileForm
+  initialProfile={loaded.profile}
+  completeness={loaded.completeness}
+  legal={loaded.legal}
+/>
     </main>
   );
 }
