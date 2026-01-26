@@ -4,7 +4,7 @@ import { requireAuthenticatedUserId } from "@/core/auth/requireUserId";
 import { createGamificationSsrComposition } from "@/core/composition/gamification.ssr.composition";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
 function formatIsoToPtBr(iso: string): string {
@@ -17,17 +17,78 @@ function formatIsoToPtBr(iso: string): string {
   }).format(d);
 }
 
-function safeJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "—";
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(v: unknown): UnknownRecord | null {
+  if (typeof v !== "object" || v === null) return null;
+  return v as UnknownRecord;
+}
+
+function pickString(obj: UnknownRecord, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim().length > 0) return v;
   }
+  return null;
+}
+
+function pickNumber(obj: UnknownRecord, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
+function pickIsoLike(obj: UnknownRecord, keys: string[]): string | null {
+  // Aceita string ISO (ou qualquer string) e deixa o formatter tentar.
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim().length > 0) return v;
+  }
+  return null;
+}
+
+function extractSymbolicStateLabel(state: unknown): string {
+  const r = asRecord(state);
+  if (!r) return "—";
+
+  // Tenta achar um "estado simbólico" em chaves comuns, sem inferir regra.
+  const label =
+    pickString(r, ["symbolicState", "symbolic_status", "status", "state", "phase", "kind"]) ??
+    pickString(r, ["label", "name", "code"]);
+
+  return label ?? "—";
+}
+
+function extractConsolidatedValue(state: unknown): string {
+  const r = asRecord(state);
+  if (!r) return "—";
+
+  const n =
+    pickNumber(r, ["value", "currentValue", "count", "currentCount", "streakValue", "streakCount"]) ?? null;
+
+  if (n !== null) return String(n);
+
+  const s =
+    pickString(r, ["value", "currentValue", "count", "currentCount", "streakValue", "streakCount"]) ?? null;
+
+  return s ?? "—";
+}
+
+function extractLastTransitionAt(state: unknown): string {
+  const r = asRecord(state);
+  if (!r) return "—";
+
+  const iso =
+    pickIsoLike(r, ["lastTransitionAt", "last_transition_at", "transitionedAt", "lastTransitionedAt"]) ?? null;
+
+  if (!iso) return "—";
+  return formatIsoToPtBr(iso);
 }
 
 export default async function StreaksPage() {
   const tenantId = await requireAuthenticatedUserId();
-
   const comp = await createGamificationSsrComposition({ tenantId });
 
   // Permitido: somente UC-04 (leitura simbólica atual).
@@ -70,37 +131,45 @@ export default async function StreaksPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {streaks.map((s) => (
-            <Card key={s.streakKey}>
-              <CardHeader>
-                <CardTitle className="text-base">{s.streakKey}</CardTitle>
-                <CardDescription>Atualizado em {formatIsoToPtBr(s.updatedAt)}</CardDescription>
-              </CardHeader>
+          {streaks.map((s) => {
+            const symbolicState = extractSymbolicStateLabel(s.state);
+            const consolidatedValue = extractConsolidatedValue(s.state);
+            const lastTransitionAt = extractLastTransitionAt(s.state);
 
-              <CardContent className="space-y-3 text-sm">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div>
-                    <div className="text-muted-foreground">Descrição</div>
-                    <div>—</div>
+            return (
+              <Card key={s.streakKey}>
+                <CardHeader>
+                  <CardTitle className="text-base">{s.streakKey}</CardTitle>
+                  <CardDescription>Atualizado em {formatIsoToPtBr(s.updatedAt)}</CardDescription>
+                </CardHeader>
+
+                <div className="px-6 pb-6 text-sm">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <div className="text-muted-foreground">Estado simbólico atual</div>
+                      <div>{symbolicState}</div>
+                    </div>
+
+                    <div>
+                      <div className="text-muted-foreground">Valor consolidado</div>
+                      <div>{consolidatedValue}</div>
+                    </div>
+
+                    <div>
+                      <div className="text-muted-foreground">Última transição</div>
+                      <div>{lastTransitionAt}</div>
+                    </div>
                   </div>
 
-                  <div>
-                    <div className="text-muted-foreground">Classificação</div>
-                    <div>—</div>
+                  <Separator className="my-4" />
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="outline">Chave: {s.streakKey}</Badge>
                   </div>
                 </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="text-muted-foreground">Estado (payload estrutural)</div>
-                  <pre className="max-h-[360px] overflow-auto rounded-md border bg-muted/30 p-3 text-xs">
-{safeJson(s.state)}
-                  </pre>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
