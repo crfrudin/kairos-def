@@ -10,6 +10,7 @@ import { createSubjectsSsrComposition } from "@/core/composition/subjects.ssr.co
 import { replaceMateriaAction, softDeleteMateriaByIdAction } from "./actions";
 
 import { LawConfigPanel } from "../components/LawConfigPanel";
+import { QuestionsConfigPanel } from "../components/QuestionsConfigPanel";
 import { TheoryCategoryDialog } from "../components/TheoryCategoryDialog";
 
 function AuthFail() {
@@ -132,6 +133,7 @@ export default async function MateriaDetalhePage({ params }: { params: Promise<{
             <div className="space-y-2">
               <div className="text-sm font-medium">Categorias</div>
               <div className="space-y-3">
+                {/* Fonte única para THEORY: switch + modal + hidden categories=THEORY */}
                 <TheoryCategoryDialog
                   defaultChecked={agg.subject.categories.includes("THEORY")}
                   autoOpenOnCheck
@@ -153,53 +155,41 @@ export default async function MateriaDetalhePage({ params }: { params: Promise<{
                   }}
                 />
 
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="categories"
-                    value="QUESTIONS"
-                    defaultChecked={agg.subject.categories.includes("QUESTIONS")}
-                  />
-                  Questões
-                </label>
-
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="categories" value="LAW" defaultChecked={agg.subject.categories.includes("LAW")} />
-                  Lei Seca
-                </label>
+                {/* ✅ Removido: checkboxes de QUESTIONS e LAW (fonte única agora = boxes próprios) */}
+                <div className="text-xs text-muted-foreground">
+                  Questões e Lei Seca são ativadas nos blocos próprios abaixo.
+                </div>
               </div>
             </div>
 
             <div className="space-y-2">
               <div className="text-sm font-medium">Status</div>
-              <input
+              <select
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 name="status"
                 defaultValue={agg.subject.status}
-                placeholder="ATIVA | EM_ANDAMENTO | PAUSADA | BLOQUEADA | CONCLUIDA"
-              />
-              <div className="text-xs text-muted-foreground">Input explícito; o backend valida.</div>
+              >
+                <option value="ATIVA">ATIVA</option>
+                <option value="EM_ANDAMENTO">EM_ANDAMENTO</option>
+                <option value="PAUSADA">PAUSADA</option>
+                <option value="BLOQUEADA">BLOQUEADA</option>
+                <option value="CONCLUIDA">CONCLUIDA</option>
+              </select>
+              <div className="text-xs text-muted-foreground">Lista controlada. O backend ainda valida.</div>
             </div>
 
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="text-sm font-semibold">Questões (opcional)</div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="questions_enabled" defaultChecked={!!agg.questionsMeta} />
-                Habilitar
-              </label>
-              <div className="space-y-1">
-                <div className="text-sm">Meta diária</div>
-                <input
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  name="questions_daily_target"
-                  type="number"
-                  min={0}
-                  defaultValue={agg.questionsMeta?.dailyTarget ?? 0}
-                />
-              </div>
-            </div>
+            {/* ✅ Questões: padrão Switch + hidden inputs + emite categories=QUESTIONS quando habilitado */}
+            <QuestionsConfigPanel
+              emitCategoryWhenEnabled
+              defaults={{
+                enabled: !!agg.questionsMeta,
+                dailyTarget: agg.questionsMeta?.dailyTarget ?? 0,
+              }}
+            />
 
+            {/* ✅ Lei Seca: já era Switch + hidden; agora emite categories=LAW quando habilitado */}
             <LawConfigPanel
+              emitCategoryWhenEnabled
               subjectNames={subjectNames}
               defaults={{
                 enabled: !!agg.lawConfig,
@@ -218,15 +208,6 @@ export default async function MateriaDetalhePage({ params }: { params: Promise<{
               <Button type="submit">Salvar</Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-6 space-y-2">
-          <div className="text-sm font-semibold">Snapshot do agregado (DTO)</div>
-          <pre className="max-h-[420px] overflow-auto rounded-md border bg-muted p-3 text-xs">
-            {JSON.stringify(agg, null, 2)}
-          </pre>
         </CardContent>
       </Card>
     </div>

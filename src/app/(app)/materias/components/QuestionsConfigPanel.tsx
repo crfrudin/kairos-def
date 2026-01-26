@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 type Props = {
   /**
    * Quando true, envia categories=QUESTIONS automaticamente ao habilitar.
-   * Útil para /materias/nova (onde removemos os checkboxes de categoria).
+   * Útil quando removemos os checkboxes de categoria (fonte única = box).
    */
   emitCategoryWhenEnabled?: boolean;
 
@@ -33,11 +33,11 @@ export function QuestionsConfigPanel(props: Props) {
     <div className="space-y-3 rounded-lg border p-4">
       <div className="text-sm font-semibold">Questões (opcional)</div>
 
-      {/* determinístico: Select/Switch não submetem por name */}
+      {/* Hidden determinísticos (contrato atual) */}
       <input type="hidden" name="questions_enabled" value={enabled ? "on" : ""} />
       <input type="hidden" name="questions_daily_target" value={dailyTarget} />
 
-      {/* remove a necessidade do checkbox amarelo em "Categorias" */}
+      {/* remove a necessidade do checkbox em "Categorias" */}
       {props.emitCategoryWhenEnabled && enabled ? <input type="hidden" name="categories" value="QUESTIONS" /> : null}
 
       <div className="flex items-center justify-between rounded-md border p-3">
@@ -56,6 +56,7 @@ export function QuestionsConfigPanel(props: Props) {
           value={dailyTarget}
           onChange={(e) => setDailyTarget(e.currentTarget.value)}
         />
+        <div className="text-xs text-muted-foreground">Campo enviado explicitamente. O backend valida a consistência.</div>
       </div>
     </div>
   );
