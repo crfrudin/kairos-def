@@ -1,0 +1,7 @@
+export enum ActivityType {
+  THEORY = 'THEORY',
+  REVIEW = 'REVIEW',
+  QUESTIONS = 'QUESTIONS',
+  LAW = 'LAW',
+  INFORMATIVES = 'INFORMATIVES',
+}

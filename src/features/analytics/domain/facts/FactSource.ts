@@ -1,0 +1,4 @@
+export enum FactSource {
+  DAILY_EXECUTION = 'DAILY_EXECUTION',
+  SUBJECT_CONTEXT = 'SUBJECT_CONTEXT',
+}
