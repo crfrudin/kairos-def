@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 import {
+  Activity,
   BarChart3,
   BookOpen,
   Calendar,
@@ -36,7 +37,11 @@ const NAV_ITEMS: readonly NavItem[] = [
 
   // Placeholders explícitos — fases futuras (não-funcionais / informativos)
   { label: "Estatísticas", href: "/estatisticas", icon: BarChart3, isPlaceholder: true },
-  { label: "Conquistas", href: "/conquistas", icon: Trophy, isPlaceholder: true },
+
+  // Gamificação (UI passiva)
+  { label: "Conquistas", href: "/conquistas", icon: Trophy },
+  { label: "Streaks", href: "/streaks", icon: Activity },
+
   { label: "Assinatura", href: "/assinatura", icon: CreditCard, isPlaceholder: true },
 
   // FASE 6 — Ajustes Administrativos

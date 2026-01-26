@@ -17,11 +17,20 @@ function formatIsoToPtBr(iso: string): string {
   }).format(d);
 }
 
-export default async function ConquistasPage() {
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "—";
+  }
+}
+
+export default async function StreaksPage() {
   const tenantId = await requireAuthenticatedUserId();
 
   const comp = await createGamificationSsrComposition({ tenantId });
 
+  // Permitido: somente UC-04 (leitura simbólica atual).
   const res = await comp.uc04GetCurrentSymbolicState.execute({ tenantId });
 
   if (!res.ok) {
@@ -29,7 +38,7 @@ export default async function ConquistasPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold">Conquistas</h1>
+          <h1 className="text-xl font-semibold">Streaks</h1>
           <Badge variant="secondary">Somente leitura</Badge>
         </div>
 
@@ -43,30 +52,29 @@ export default async function ConquistasPage() {
     );
   }
 
-  const achievements = res.value.state.achievements;
+  const streaks = res.value.state.streaks;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <h1 className="text-xl font-semibold">Conquistas</h1>
+        <h1 className="text-xl font-semibold">Streaks</h1>
         <Badge variant="secondary">Somente leitura</Badge>
       </div>
 
-      {achievements.length === 0 ? (
+      {streaks.length === 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Sem registros</CardTitle>
-            <CardDescription>Nenhuma conquista concedida foi encontrada.</CardDescription>
+            <CardDescription>Nenhum snapshot de streak foi encontrado.</CardDescription>
           </CardHeader>
         </Card>
       ) : (
         <div className="space-y-4">
-          {achievements.map((g) => (
-            <Card key={g.id}>
+          {streaks.map((s) => (
+            <Card key={s.streakKey}>
               <CardHeader>
-                {/* Sem catálogo: exibimos apenas o identificador canônico (slug) sem inferência */}
-                <CardTitle className="text-base">{g.achievementSlug}</CardTitle>
-                <CardDescription>Concedida em {formatIsoToPtBr(g.grantedAt)}</CardDescription>
+                <CardTitle className="text-base">{s.streakKey}</CardTitle>
+                <CardDescription>Atualizado em {formatIsoToPtBr(s.updatedAt)}</CardDescription>
               </CardHeader>
 
               <CardContent className="space-y-3 text-sm">
@@ -84,9 +92,11 @@ export default async function ConquistasPage() {
 
                 <Separator />
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">ID: {g.id}</Badge>
-                  <Badge variant="outline">Base factual: {g.basedOnObservedEventIds.length}</Badge>
+                <div className="space-y-2">
+                  <div className="text-muted-foreground">Estado (payload estrutural)</div>
+                  <pre className="max-h-[360px] overflow-auto rounded-md border bg-muted/30 p-3 text-xs">
+{safeJson(s.state)}
+                  </pre>
                 </div>
               </CardContent>
             </Card>

@@ -80,7 +80,7 @@ export default function DashboardPage() {
 
         <FuturePlaceholderCard
           title="Conquistas"
-          description="Gamificação, streak e conquistas (Fase 5). Placeholder informativo."
+          description="Leitura simbólica de conquistas concedidas."
           href="/conquistas"
         />
 
